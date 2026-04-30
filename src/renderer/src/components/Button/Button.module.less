@@ -1,0 +1,156 @@
+.button {
+	position: relative;
+	min-width: 100px;
+	height: 28px;
+	padding: 0 12px;
+	line-height: 100%;
+	font-size: 14px;
+	text-align: center;
+	background: hwb(var(--bg99) / 0.86);
+	// letter-spacing: 4px;
+	// text-indent: 2px;
+	color: var(--33);
+	font-family: inherit;
+	border-radius: 8px;
+	border: 1px solid hwb(var(--bg90) / 0.45);
+	outline: none;
+	box-shadow: 0 1px 3px 0 hwb(var(--hoverShadow) / 0.18);
+	transition: transform 0.16s ease, box-shadow 0.16s ease, background 0.16s ease, opacity 0.16s ease;
+	&:not(&:nth-last-child(1)) {
+		margin-right: 16px;
+	}
+	&:active {
+		transform: scale(0.98);
+	}
+	&:hover {
+		transform: translateY(-1px);
+	}
+}
+
+.button[data-color_theme="themeLight"] {
+	box-shadow: 0 0 1px 0.5px hwb(var(--bg99)),	// 柔和边缘
+				0 1px 3px 0 hwb(var(--hoverShadow) / 0.3);	// 外部阴影
+	&:hover {
+		box-shadow: 0 0 1px 0.5px hwb(var(--bg99)),	// 柔和边缘
+					0 0 0 0.5px hwb(var(--highlight)) inset,	// 包边
+					0 1px 4px 0 hwb(var(--hoverShadow) / 0.4),	// 外部阴影
+	}
+	&:active {
+		box-shadow: 0 0px 2px 0.5px hwb(var(--hoverShadow) / 0.15), // 外部阴影
+					0 8px 12px hwb(var(--hoverShadow) / 0.1) inset; // 内部凹陷阴影
+	}
+}
+.button[data-color_theme="themeDark"] {
+	box-shadow: 0 0 1px 0.5px hwb(var(--bg99)),	// 柔和边缘
+				0 0 0 0.5px hwb(var(--highlight) / 0.5) inset,	// 包边
+				0 1px 3px 0 hwb(var(--hoverShadow) / 0.3);	// 外部阴影
+	&:hover {
+		box-shadow: 0 0 1px 0.5px hwb(var(--bg99)),	// 柔和边缘
+					0 0 0 0.75px hwb(var(--highlight)) inset,	// 包边
+					0 1px 4px 0 hwb(var(--hoverShadow) / 0.4),	// 外部阴影
+	}
+	&:active {
+		box-shadow: 0 0px 2px 0.5px hwb(var(--hoverShadow) / 0.15), // 外部阴影
+					0 8px 12px hwb(var(--hoverShadow) / 0.4) inset; // 内部凹陷阴影
+	}
+}
+.small {
+	height: 24px;
+	font-size: 13px;
+	padding: 0 8px;
+	min-width: unset;
+}
+.large {
+	height: 36px;
+	font-size: 16px;
+	padding: 0 20px;
+	min-width: 160px;
+	border-radius: 10px;
+	text-indent: 1px;
+	letter-spacing: 2px;
+}
+.primary[data-color_theme="themeLight"] {
+	background: linear-gradient(180deg, hwb(210 56% 0% / 0.92), hwb(210 25% 10% / 0.92));
+	color: #FDFDFD;
+	&:hover {
+		background: linear-gradient(180deg, hwb(210 45% 0%), hwb(210 25% 5%));
+		box-shadow: 0 0 1px 0.5px hwb(var(--bg99)),	// 柔和边缘
+					0 0 0 0.5px hwb(210 50% 0%) inset,	// 包边
+					0 1px 4px 0 hwb(210 0% 50% / 0.4),	// 外部阴影
+	}
+	&:active {
+		box-shadow: 0 0px 2px 0.5px hwb(210 0% 100% / 0.15), // 外部阴影
+					0 4px 6px hwb(210 0% 100% / 0.2) inset; // 内部凹陷阴影
+	}
+}
+.primary[data-color_theme="themeDark"] {
+	background: linear-gradient(180deg, hwb(210 34% 5% / 0.92), hwb(210 15% 25% / 0.92));
+	color: #FDFDFD;
+	&:hover {
+		background: linear-gradient(180deg, hwb(210 30% 0%), hwb(210 15% 20%));
+		box-shadow: 0 0 1px 0.5px hwb(var(--bg99)),	// 柔和边缘
+					0 0 0 0.5px hwb(210 50% 0%) inset,	// 包边
+					0 1px 4px 0 hwb(210 0% 50% / 0.4),	// 外部阴影
+	}
+	&:active {
+		box-shadow: 0 0px 2px 0.5px hwb(210 0% 100% / 0.15), // 外部阴影
+					0 4px 6px hwb(210 0% 100% / 0.2) inset; // 内部凹陷阴影
+	}
+}
+.danger[data-color_theme="themeLight"] {
+	background: linear-gradient(180deg, hwb(0 45% 5%), hwb(0 25% 10%));
+	color: #FDFDFD;
+	&:hover {
+		background: linear-gradient(180deg, hwb(0 45% 0%), hwb(0 25% 5%));
+		box-shadow: 0 0 1px 0.5px hwb(var(--bg99)),	// 柔和边缘
+					0 0 0 0.5px hwb(0 50% 0%) inset,	// 包边
+					0 1px 4px 0 hwb(0 0% 50% / 0.4),	// 外部阴影
+	}
+	&:active {
+		box-shadow: 0 0px 2px 0.5px hwb(0 0% 100% / 0.15), // 外部阴影
+					0 4px 6px hwb(0 0% 100% / 0.2) inset; // 内部凹陷阴影
+	}
+}
+.danger[data-color_theme="themeDark"] {
+	background: linear-gradient(180deg, hwb(0 30% 5%), hwb(0 15% 25%));
+	color: #FDFDFD;
+	&:hover {
+		background: linear-gradient(180deg, hwb(0 30% 0%), hwb(0 15% 20%));
+		box-shadow: 0 0 1px 0.5px hwb(var(--bg99)),	// 柔和边缘
+					0 0 0 0.5px hwb(0 50% 0%) inset,	// 包边
+					0 1px 4px 0 hwb(0 0% 50% / 0.4),	// 外部阴影
+	}
+	&:active {
+		box-shadow: 0 0px 2px 0.5px hwb(0 0% 100% / 0.15), // 外部阴影
+					0 4px 6px hwb(0 0% 100% / 0.2) inset; // 内部凹陷阴影
+	}
+}
+.noBg[data-color_theme="themeLight"] {
+	background: none;
+	box-shadow: none;
+	&:hover {
+		box-shadow: 0 1.5px 4px 0 hwb(var(--hoverShadow) / 0.15),	// 外部阴影
+					0 1px 0.5px 0px hwb(var(--hoverLightBg)) inset;	// 上高光
+	}
+	&:active {
+		box-shadow: 0 0 2px 1px hwb(var(--hoverShadow) / 0.05), // 外部阴影
+					0 6px 12px hwb(var(--hoverShadow) / 0.1) inset; // 内部凹陷阴影
+	}
+}
+.noBg[data-color_theme="themeDark"] {
+	background: none;
+	box-shadow: none;
+	&:hover {
+		box-shadow: 0 0 1.5px 0.5px hwb(var(--hoverLightBg)),	// 包边
+					0 1.5px 4px 0 hwb(var(--hoverShadow) / 0.3),	// 外部阴影
+					0 1px 0.5px 0px hwb(var(--hoverLightBg)) inset;	// 上高光
+	}
+	&:active {
+		box-shadow: 0 0 2px 1px hwb(var(--hoverShadow) / 0.05), // 外部阴影
+					0 6px 18px hwb(var(--hoverShadow) / 0.4) inset; // 内部凹陷阴影
+	}
+}
+.disabled {
+	pointer-events: none;
+	opacity: 0.6;
+}

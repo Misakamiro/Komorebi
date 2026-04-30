@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-12 0 120 120" aria-hidden="true">
+  <!-- 翻转后的主箭头路径 -->
+  <path fill="none" stroke="currentColor" stroke-width="6" d="
+    M 42 96
+    H 54
+    A 4 4 0 0 0 58 92
+    V 68
+    A 4 4 0 0 1 62 64
+    H 74
+    A 4 4 0 0 0 77 58
+    L 51 32
+    A 4 4 0 0 0 45 32
+    L 19 58
+    A 4 4 0 0 0 22 64
+    H 34
+    A 4 4 0 0 1 38 68
+    V 92
+    A 4 4 0 0 0 42 96
+    Z" />
+
+  <!-- 翻转后的底线（现在在顶部） -->
+  <line x1="24" y1="20" x2="72" y2="20" stroke="currentColor" stroke-width="6" stroke-linecap="round" />
+</svg>

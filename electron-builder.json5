@@ -1,0 +1,77 @@
+/**
+ * @see https://www.electron.build/configuration/configuration
+ */
+{
+  "appId": "com.komorebi.desktop",
+  "productName": "Komorebi",
+  "asar": false,
+  "npmRebuild": false,
+  "directories": {
+    "output": "release"
+  },
+  "files": [
+    "app/main",
+    "app/preload",
+    "app/renderer",
+    "!**/*.map"
+  ],
+  "extraFiles": [
+      {
+        "from": "LICENSE",
+        "to": "LICENSE",
+      },
+      {
+        "from": "NOTICE-Komorebi.md",
+        "to": "NOTICE-Komorebi.md",
+      },
+  ],
+  "win": {
+    "artifactName": "${productName}_${version}.${ext}",
+    "icon": "config/256.ico",
+    "target": [
+      {
+        "target": "dir",
+        "arch": ["x64"],
+      },
+      {
+        "target": "nsis",
+        "arch": ["x64"],
+      }
+    ],
+    "extraFiles": [
+      {
+        "from": "app/backend/index.exe",
+        "to": "KomorebiService.exe",
+      },
+      {
+        "from": "tools/ffmpeg.exe",
+        "to": "ffmpeg.exe",
+      },
+      {
+        "from": "tools/ffprobe.exe",
+        "to": "ffprobe.exe",
+      },
+      {
+        "from": "tools/LICENSE-ffmpeg.txt",
+        "to": "LICENSE-ffmpeg.txt",
+      },
+      {
+        "from": "tools/README-ffmpeg.txt",
+        "to": "README-ffmpeg.txt",
+      },
+      {
+        "from": "tools/ncmdump.exe",
+        "to": "ncmdump.exe",
+      },
+      {
+        "from": "tools/LICENSE-ncmdump.txt",
+        "to": "LICENSE-ncmdump.txt",
+      },
+    ],
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "deleteAppDataOnUninstall": false,
+  },
+}

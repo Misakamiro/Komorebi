@@ -1,0 +1,44 @@
+.container {
+	position: relative;
+	width: 90vw;
+	height: calc(100vh - 200px);
+	display: flex;
+	flex-direction: column;
+	justify-content: stretch;
+	.line1 {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 8px;
+		i {
+			opacity: 0.6;
+			zoom: 0.6;
+			text-align: left;
+		}
+	}
+	textarea {
+		border: none;
+		background: hwb(var(--bg99) / 0.8);
+		outline: none;
+		box-sizing: border-box;
+		width: 100%;
+		height: inherit;
+		resize: none;
+		color: var(--33);
+		// font-family: Consolas,monaco,"Noto Mono","黑体","苹方-简","苹方",Roboto;
+		font-family: inherit;
+		font-weight: 400;
+		font-size: 13px;
+		line-height: 18px;
+		border-radius: 0 2px 2px 0;
+		box-shadow: 0 0 1px 1px hwb(0 0% 100% / 0.05), // 外部阴影
+					0 3px 6px hwb(0 0% 100% / 0.02) inset; // 内部凹陷阴影
+		transition: box-shadow 0.1s linear;
+		&:hover {
+			background: hwb(var(--bg99) / 0.9);
+			box-shadow: 0 0 1px 1px hwb(210deg 0% 0% / 0.5), // 外部阴影
+						0 3px 6px hwb(0 0% 100% / 0.02) inset; // 内部凹陷阴影
+			transition: box-shadow 0.3s cubic-bezier(0.1, 2, 0.3, 1);
+		}
+	}
+}

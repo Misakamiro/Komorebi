@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>markdown-render</title>
+	<!-- <script src="https://cdn.jsdelivr.net/npm/markdown-it@14.1.0/dist/markdown-it.min.js"></script> -->
+	<script src="./markdown-it.min.js"></script>
+	<style>
+		.themeLight {
+			color: hsl(0, 0%, 20%);
+			/* 背景色系 */
+			--bg100: 0 100% 0%;
+			--bg99: 0 99% 1%;
+			--bg98: 0 98% 2%;
+			--bg97: 0 97% 3%;
+			--bg96: 0 96% 4%;
+			--bg95: 0 95% 5%;
+			--bg94: 0 94% 6%;
+			--bg93: 0 93% 7%;
+			--bg92: 0 92% 8%;
+			--bg91: 0 91% 9%;
+			--bg90: 0 90% 10%;
+			/* 反向色系（ff f7 e7：Inputbox 等组件的激活与非激活状态　66 33：两个级别的浅色文字） */
+			--ff: #FFFFFF;
+			--f7: #F7F7F7;
+			--e7: #E7E7E7;
+			--66: #666;
+			--33: #333;
+			/* 组件的上高光 */
+			--highlight: 0 100% 0%;
+			/* hoverLightBg/hoverShadow：组件的亮部和暗部 */
+			--hoverLightBg: 0 100% 0%;
+			--hoverShadow: 0 0% 100%;
+			/* opposite：搭配透明度使用，简单的黑白反转 */
+			--opposite: 0 0% 100%;
+			--opposite80: 0 20% 80%;
+			/* Inputbox、Combobox */
+			--errorBorder: #E77;
+			--errorBgHover: #F7E7E7;
+			--errorBgActive: #FEE;
+			/* 其他 */
+			--paraBoxButtonDropFilterSvg: drop-shadow(0 0 0px hwb(0 100% 0% / 1)) drop-shadow(0 1px 1px hwb(0 0% 100% / 0.15));
+			--paraBoxButtonDropFilterText: drop-shadow(0 -0.5px 0px hwb(0 100% 0% / 1)) drop-shadow(0 1px 1px hwb(0 0% 100% / 0.15));
+			--menuItemLight: 210 90% 2%;
+			--menuItemHovered: 210 80% 0%;
+			--menuItemSelected: 210 60% 0%;
+			--primaryColor: 220 25% 10%;
+			--titleText: #25e;
+			--articleBorder: hwb(30 70% 10%);
+			--articleLightBg: hwb(30 85% 2% / 0.6);
+		}
+		
+		.themeDark {
+			color: #EEE;
+			/* 背景色系 */
+			/* --bg100: 0 17.5% 82.5%;
+			--bg99: 0 16.0% 84.0%;
+			--bg98: 0 14.5% 85.5%;
+			--bg97: 0 13.0% 87.0%;
+			--bg96: 0 11.5% 88.5%;
+			--bg95: 0 10.0% 90.0%;
+			--bg94: 0 8.5% 91.5%;
+			--bg93: 0 7.0% 93.0%;
+			--bg92: 0 5.5% 94.5%;
+			--bg91: 0 4.0% 96.0%;
+			--bg90: 0 2.5% 97.5%; */
+			--bg100: 0 20.0% 80.0%;
+			--bg99: 0 18.5% 81.5%;
+			--bg98: 0 17.0% 83.0%;
+			--bg97: 0 15.5% 84.5%;
+			--bg96: 0 14.0% 86.0%;
+			--bg95: 0 12.5% 87.5%;
+			--bg94: 0 11.0% 89.0%;
+			--bg93: 0 9.5% 90.5%;
+			--bg92: 0 8.0% 92.0%;
+			--bg91: 0 6.5% 93.5%;
+			--bg90: 0 5.0% 95.0%;
+			/* 反向色系（ff f7 e7：Inputbox 等组件的激活与非激活状态　66 33：两个级别的浅色文字） */
+			--ff: black;
+			--f7: #222;
+			--e7: #333;
+			--66: #B7B7B7;
+			--33: #DDD;
+			/* 组件的上高光 */
+			--highlight: 0 25% 75%;
+			/* hoverLightBg/hoverShadow：组件的亮部和暗部　opposite：搭配透明度使用，简单的黑白反转 */
+			--hoverLightBg: 0 20% 80%;
+			--hoverShadow: 0 0% 100%;
+			/* opposite：搭配透明度使用，简单的黑白反转 */
+			--opposite: 0 100% 0%;
+			--opposite80: 0 80% 20%;
+			/* Inputbox */
+			--errorBorder: #D66;
+			--errorBg: #472727;
+			--errorBgActive: #522;
+			/* 其他 */
+			--paraBoxButtonDropFilterSvg: drop-shadow(0 2px 2px hwb(0 100% 0% / 0.1));
+			--paraBoxButtonDropFilterText: drop-shadow(0 2px 2px hwb(0 100% 0% / 0.1));
+			--menuItemLight: 210 30% 50%;
+			--menuItemHovered: 210 20% 60%;
+			--menuItemSelected: 210 10% 30%;
+			--primaryColor: 220 15% 20%;
+			--titleText: #37f;
+			--articleBorder: hwb(30 30% 40%);
+			--articleLightBg: hwb(30 5% 40% / 0.6);
+		}
+	</style>
+	<style>
+		article {
+			box-sizing: border-box;
+			width: 100%;
+			height: 100%;
+			padding: 0 5% 0 calc(5% + 8px);
+			overflow: auto;
+			font-family: MiSans, MiSans VF, HarmonyOS Sans, HarmonyOS Sans SC, "OPPO Sans 4.0", 冬青黑体简体中文, 冬青黑体, Product Sans, 思源黑体, Noto Sans S Chinese, PingFang SC, 苹方, 字语叙黑体, Helvetica, 黑体, sans-serif;
+			font-size: 14px;
+		}
+		article>*:nth-child(1) {
+			margin-block-start: 0;
+		}
+		article>h1 {
+			font-size: 28px;
+			font-weight: 600;
+		}
+		article>p {
+			position: relative;
+			/* line-height: 25px; */
+			line-height: 1.5em;
+			text-align: left;
+			/* margin: 10px 0; */
+		}
+		article>p::before {
+			content: '🔸';
+			display: block;
+			border-radius: 3px;
+			position: absolute;
+			left: -28px;
+		}
+		article a {
+			color: var(--titleText);
+		}
+		article>ul {
+			margin: 10px 0;
+		}
+		article>li {
+			font-size: 14px;
+			line-height: 25px;
+			text-align: left;
+		}
+		article>table {
+			margin: auto;
+			border-spacing: 0;
+			border-collapse: collapse;
+			box-shadow: 0px 2px 4px var(--articleLightBg);
+		}
+		tbody>tr:nth-child(2n-1) {
+			background-color: var(--articleLightBg);
+		}
+		td, th {
+			border: var(--articleBorder) 1.5px solid;
+			border-collapse: collapse;
+			padding: 5px 12px;
+		}
+		th {
+			font-weight: 600;
+		}
+		code {
+			font-family: Consolas, monaco, "Noto Mono", "黑体", "苹方-简", "苹方", Roboto;
+			border: var(--articleBorder) 1.5px solid;
+			border-radius: 6px;
+			background-color: var(--articleLightBg);
+			padding: 1px 2px;
+		}
+		.noFile {
+			height: 100%;
+			display: flex;
+			flex-direction: column;
+			align-items: center;
+			justify-content: center;
+			gap: 24px;
+		}
+	</style>
+</head>
+<body>
+	<script>
+		const md = window.markdownit({ breaks: true, html: true });
+		const params = location.search.slice(1) ? location.search.slice(1).split('&') : [];
+		let url;
+		for (const item of params) {
+			const parsed = item.match(/(.+)=(.+)/);
+			if (parsed?.[1] === 'url' && parsed[2]) {
+				url = parsed[2];
+				break;
+			}
+		}
+		if (url) {
+			fetch(url).then(async (response) => {
+				const text = await response.text();
+				const rendered = md.render(text);
+				document.getElementById('article').innerHTML = rendered;
+			}).catch(() => {
+				document.getElementById('article').innerHTML = `<div class="noFile">页面打开失败 ╮(╯-╰)╭<br />页面 ${url} 无法访问</div>`;
+			});
+		} else {
+			document.getElementById('article').innerHTML = `<div class="noFile">页面打开失败 ╮(╯-╰)╭<br />参数不正确</div>`;
+		}
+	</script>
+	<article id="article"></article>
+</body>
+</html>

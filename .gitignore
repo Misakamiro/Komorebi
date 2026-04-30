@@ -1,0 +1,28 @@
+/node_modules/
+
+# Build output
+/app/
+/release/
+/dist/
+/out/
+*.map
+*.log
+
+# Local source backup artifacts
+/Komorebi-FFBox-source-*.zip
+/Komorebi-FFBox-source-*.zip.b64.txt
+/source-b64-parts/
+/restore-source.ps1
+
+# Large/runtime binaries. Put these in GitHub Releases, not in git history.
+tools/*.exe
+
+# Local machine/editor files
+.env
+.env.*
+!.env.example
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.local

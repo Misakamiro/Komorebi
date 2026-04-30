@@ -1,0 +1,18 @@
+.smallTip {
+    :global .tooltip-box {
+        position: relative;
+        top: -1px;
+        padding: 6px 10px;
+        border-radius: 8px;
+        border: none;
+        background-color: hwb(var(--hoverLightBg) / 0.5);
+        backdrop-filter: blur(8px) contrast(110%);
+        box-shadow: 0 0 1px 0.5px hwb(var(--hoverLightBg)),
+                    0 1.5px 4px 0 hwb(var(--hoverShadow) / 0.2),
+                    0 1px 0.5px 0px hwb(var(--highlight) / 0.5) inset;	// 上高光
+        .tooltip-message {
+            font-size: 12px;
+            line-height: 16px;
+        }
+    }
+}

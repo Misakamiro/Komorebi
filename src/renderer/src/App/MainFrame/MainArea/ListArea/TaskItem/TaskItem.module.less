@@ -1,0 +1,575 @@
+.taskWrapper {
+	// 第一层在 js 层面给定高度，另外多给 2px 空隙（因为 box-shadow 会让外围显得略微变胖）
+	height: var(--height);
+	margin-bottom: 2px;
+	// transform: translateZ(0);	// 也有 position: relative 的效果
+	position: relative;
+	transition: height 0.18s ease;	// 任务切换启动/停止
+	&.firstRender {
+		opacity: 0;
+		transform: translateY(4px);
+		transition: height 0.18s ease, opacity 0.12s ease, transform 0.12s ease;
+	}
+	.taskBackground {
+		// 第 2 层 wrapper 用于产生 16px 的左右边距，并产生 12px 的下阴影区域
+		height: calc(var(--height) + 12px);
+		overflow: hidden;
+		transform: translateZ(0);
+		transition: height 0.18s ease;
+		.backgroundWhite {
+			position: absolute;
+			top: 0;
+			bottom: 12px;
+			left: 16px;
+			right: 16px;
+			border-radius: 3px;
+			background-color: hwb(var(--bg98));
+			box-shadow: 0 0 1px 2px hwb(var(--bg98)),	// 柔边
+						0 2px 6px 0 hwb(0deg 0% 100% / 0.2);	// 阴影
+			transition: background-color 0.3s;
+			pointer-events: all;
+		}
+		.backgroundProgress {
+			position: absolute;
+			top: 0;
+			bottom: 12px;
+			left: 16px;
+			right: 16px;
+			&>div {
+				transition: width 0.3s ease-out, opacity 0.2s ease-out;
+				position: absolute;
+				top: 0;
+				height: 100%;
+				border-radius: 2px;
+				// will-change: width, opacity;
+			}
+		}
+	}
+	&:hover {
+		.backgroundWhite {
+			transition: background-color 0.2s cubic-bezier(0, 2, 0.3, 1);
+			background: hwb(var(--menuItemHovered));
+		}
+	}
+	&:active {
+		.backgroundWhite {
+			border: hwb(var(--menuItemActive)) 1px solid;
+		}
+	}
+}
+
+.task {
+	position: absolute;
+	top: 0;
+	left: 16px;
+	right: 16px;
+	height: var(--height);
+	pointer-events: none;
+	overflow: hidden;
+	transition: height 0.4s ease;
+	content-visibility: auto;	// 不在视口时不渲染元素，提升性能
+	.previewIcon {
+		position: absolute;
+		left: 2px;
+		top: 2px;
+		width: 32px;
+		display: flex;
+		justify-content: center;
+		align-items: center;
+		transition: height 0.4s ease;
+		svg {
+			position: absolute;
+			width: 20px;
+			height: 20px;
+			filter: var(--paraBoxButtonDropFilterSvg);
+		}
+	}
+	.taskName {
+		position: absolute;
+		top: 3px;
+		bottom: 2px;
+		left: 36px;
+		max-height: 92px;
+		display: -webkit-box;
+		font-size: 16px;
+		line-height: 23px;
+		font-weight: 450;
+		width: ~'max(calc(100% - 828px), 64px)';
+		text-align: left;
+		overflow: hidden;
+		word-break: break-all;
+		// text-overflow: ellipsis;
+		overflow: hidden;
+		transition: font-size 0.4s ease, max-height 0.4s ease, width 0.4s cubic-bezier(0, 0.0, 0.0, 1);
+		-webkit-line-clamp: 4;
+		-webkit-box-orient: vertical;
+		@media only screen and (min-width: 1280px) {
+			font-size: 22px;
+			line-height: 30px;
+			-webkit-line-clamp: 3;
+		}
+	}
+	.paraArea {
+		position: absolute;
+		top: 2px;
+		height: 24px;
+		right: 48px;
+		// max-width: calc(100% - 128px);
+		margin-right: -9px;
+		overflow: hidden;
+		white-space: nowrap;
+		text-align: right;
+		transition: max-width 0.4s cubic-bezier(0, 0.0, 0.0, 1);
+		&.firstRender {
+			max-width: calc(0% + 0px) !important;
+		}
+		&>* {
+			text-align: center;
+		}
+		.durationBefore, .durationAfter, .formatBefore, .formatAfter, .smpteBefore, .smpteAfter, .videoBefore, .videoAfter, .audioBefore, .audioAfter {
+			display: inline-block;
+			height: 24px;
+			line-height: 24px;
+			vertical-align: middle;
+			font-size: 11px;
+			text-overflow: ellipsis;
+			overflow: hidden;
+			white-space: nowrap;
+			// outline: red 1px solid;
+		}
+		.durationBefore, .durationAfter {
+			width: 64px;
+		}
+		.formatBefore, .formatAfter {
+			width: 36px;
+		}
+		.smpteBefore, .smpteAfter {
+			width: 88px;
+		}
+		.videoBefore, .audioBefore {
+			width: 96px;
+		}
+		.videoAfter, .audioAfter {
+			width: 120px;
+		}
+		.durationTo, .formatTo, .smpteTo, .videoTo, .audioTo {
+			display: inline-flex;
+			justify-content: center;
+			align-items: center;
+			vertical-align: middle;
+			height: 24px;
+			width: 14px;
+			// outline: blue 1px solid;
+			svg {
+				width: 12px;
+				height: 12px;
+			}
+		}
+		.divider {
+			display: inline-flex;
+			justify-content: center;
+			align-items: center;
+			height: 24px;
+			width: 13px;
+			vertical-align: middle;
+			div {
+				height: 16px;
+				width: 1px;
+				background-color: hwb(0deg 50% 50% / 0.3);
+			}
+		}
+	}
+	@keyframes dashboardTransAni {
+		from {
+			height: 0;
+		}
+	}
+	@keyframes dashboardTransAniReverse {
+		to {
+			height: 0;
+		}
+	}
+	.dashboardTrans-enter-active {
+		animation: dashboardTransAni 0.16s ease;
+	}
+	.dashboardTrans-leave-active {
+		animation: dashboardTransAniReverse 0.12s ease;
+	}
+	.dashboardArea {
+		position: absolute;
+		top: 26px;
+		height: 72px;
+		right: 36px;
+		max-width: calc(100% - 60px);
+		overflow: hidden;
+		text-align: right;
+		&>* {
+			vertical-align: middle;
+		}
+		&>.roundGraphItem, &>.linearGraphItems, &>.textItem:not(.disabled) {
+			&:hover::before {
+				content: '';
+				position: absolute;
+				left: -8px;
+				top: -4px;
+				right: -8px;
+				bottom: -4px;
+				border-radius: 8px;
+				background-color: hwb(var(--bg100) / 0.3);
+				box-shadow: 0 1px 2px -1px hwb(var(--hoverShadow) / 0.6),
+							0 0 1px 0.5px hwb(var(--hoverLightBg) / 0.6),
+							0 1px 0.5px 0px hwb(var(--highlight) / 0.8) inset;	// 上高光
+			}
+			&:active {
+				transform: translateY(0.25px);
+			}
+			&:active::before {
+				background-color: hwb(var(--bg100) / 0.2);
+				box-shadow: 0 0.5px 1px 0.5px hwb(var(--hoverShadow) / 0.05), // 外部阴影
+							0 6px 12px hwb(var(--hoverShadow) / 0.1) inset; // 内部凹陷阴影
+			}
+		}
+		.roundGraphItem {
+			position: relative;
+			display: inline-block;
+			width: 64px;
+			height: 60px;
+			margin: 6px 12px;
+			.ring {
+				width: 64px;
+				height: 64px;
+				border-radius: 50%;
+				-webkit-mask: radial-gradient(transparent 60%, #000 61%);
+				background: conic-gradient(#36D 0%, #36D 0%, #DDD 0%, #DDD 75%, transparent 75%);
+				transform: rotate(225deg);
+			}
+			.data {
+				position: absolute;
+				left: 0;
+				top: 22px;
+				width: 100%;
+				text-align: center;
+				font-weight: 600;
+				font-size: 15px;
+				font-family: Bahnschrift,Calibri,"SF Electrotome",Avenir,"苹方-简","苹方","微软雅黑","Segoe UI",Consolas,Roboto,"黑体";
+			}
+			.description {
+				position: absolute;
+				left: 0;
+				bottom: -2px;
+				width: 100%;
+				text-align: center;
+				font-size: 11px;
+			}
+		}
+		.linearGraphItems {
+			position: relative;
+			display: inline-flex;
+			flex-direction: column;
+			justify-content: space-between;
+			width: 120px;
+			height: 60px;
+			margin: 6px 8px;
+			.linearGraphItem {
+				position: relative;
+				width: 120px;
+				height: 30px;
+				transform: translateY(3px);
+				.data {
+					position: absolute;
+					right: 0;
+					top: 0;
+					height: 30px;
+					width: 70px;
+					font-size: 22px;
+					font-family: Bahnschrift,Calibri,"SF Electrotome",Avenir,"苹方-简","苹方","微软雅黑","Segoe UI",Consolas,Roboto,"黑体";
+					line-height: 30px;
+					text-align: left;
+				}
+				.description {
+					position: absolute;
+					left: 0;
+					top: 0;
+					height: 30px;
+					width: 30px;
+					font-size: 12px;
+					font-family: Bahnschrift,Calibri,"SF Electrotome",Avenir,"苹方-简","苹方","微软雅黑","Segoe UI",Consolas,Roboto,"黑体";
+					line-height: 30px;
+					text-align: right;
+				}
+			}
+		}
+		.textItem {
+			position: relative;
+			display: inline-block;
+			width: 100px;
+			height: 60px;
+			margin: 6px;
+			.data {
+				position: absolute;
+				left: 0;
+				top: 10px;
+				width: 100%;
+				text-align: center;
+				font-size: 25px;
+				font-family: Bahnschrift,Calibri,"SF Electrotome",Avenir,"苹方-简","苹方","微软雅黑","Segoe UI",Consolas,Roboto,"黑体";
+				line-height: 30px;
+			}
+			.dataLarge {
+				font-size: 30px;
+			}
+			.description {
+				position: absolute;
+				left: 0;
+				bottom: -2px;
+				width: 100%;
+				text-align: center;
+				font-size: 11px;
+			}
+		}
+	}
+	.cmdArea {
+		position: absolute;
+		top: 2px;
+		height: 64px;
+		left: 2px;
+		right: 2px;
+		padding: 4px;
+		box-sizing: border-box;
+		transition: top 0.4s ease;
+		.margin {
+			display: flex;
+			position: relative;
+			height: 100%;
+			pointer-events: all;
+			.switch {
+				width: 40px;
+				height: 100%;
+				.item {
+					width: 40px;
+					height: 28px;
+					box-sizing: border-box;
+					padding: 0;
+					position: relative;
+					outline: none;
+					border: none;
+					font-size: 12px;
+					line-height: 28px;
+					color: var(--66);
+					background-color: hwb(var(--bg99) / 0.8);
+					border-radius: 2px 0 0 2px;
+					box-shadow: 0 0 1px 0.5px hwb(var(--bg99)),	// 柔边
+								0 1.5px 3px 0 hwb(0 0% 100% / 0.2);
+					border-left: transparent 3px solid;
+					transition: all 0.3s cubic-bezier(0, 1.5, 0.3, 1);
+					user-select: none;
+					&:not(.itemSelected):hover::after {
+						content: '';
+						position: absolute;
+						left: -3px;
+						width: 40px;
+						height: 100%;
+						border-radius: 2px 0 0 2px;
+						// background: hwb(0 100% 0% / 0.2);
+						box-shadow: 0 0 2px hwb(0 0% 100% / 0.2);
+					}
+				}
+				.itemSelected {
+					background-color: hwb(var(--bg97) / 0.8);
+					border-radius: 2px 0 0 2px;
+					box-shadow: 0 0 2px 1px hwb(0 0% 100% / 0.05), // 外部阴影
+								0 3px 6px hwb(0 0% 100% / 0.1) inset; // 内部凹陷阴影
+					border-left: hsl(130, 75%, 50%) 3px solid;
+				}
+			}
+			.code {
+				width: calc(100% - 28px);
+				height: 100%;
+				textarea {
+					border: none;
+					background: hwb(var(--bg96) / 0.6);
+					outline: none;
+					box-sizing: border-box;
+					width: 100%;
+					height: 100%;
+					resize: none;
+					color: var(--33);
+					font-family: Consolas,monaco,"Noto Mono","黑体","苹方-简","苹方",Roboto;
+					font-weight: 400;
+					font-size: 12px;
+					line-height: 13px; // 52 / 4
+					border-radius: 0 2px 2px 0;
+					box-shadow: 0 0 1px 1px hwb(0 0% 100% / 0.05), // 外部阴影
+								0 3px 6px hwb(0 0% 100% / 0.02) inset; // 内部凹陷阴影
+					&:hover {
+						background: hwb(var(--bg97) / 0.8);
+						box-shadow: 0 0 1px 1px hwb(210deg 0% 0% / 0.5), // 外部阴影
+									0 3px 6px hwb(0 0% 100% / 0.02) inset; // 内部凹陷阴影
+					}
+				}
+			}
+		}
+	}
+	.vline {
+		position: absolute;
+		top: 2px;
+		bottom: 2px;
+		right: 32px;
+		display: flex;
+		justify-content: center;
+		align-items: center;
+		width: 3px;
+		vertical-align: middle;
+		div {
+			height: calc(100% - 8px);
+			width: 1px;
+			background-color: hwb(0deg 50% 50% / 0.3);
+		}
+	}
+	.button {
+		position: absolute;
+		top: 1px;
+		right: 1px;
+		width: 31px;
+		display: flex;
+		justify-content: center;
+		align-items: center;
+		border: none;
+		outline: none;
+		padding: 0;
+		background: none;
+		pointer-events: all;
+		transition: background-color 0.3s, height 0.4s ease;
+		&:hover {
+			transition: height 0.4s ease;
+			background: hwb(var(--menuItemLight));
+			border-radius: 2px;
+			box-shadow: 0 0 12px 6px hwb(var(--menuItemLight)) inset,
+						0 1px 2px 0 hwb(0 0% 100% / 0.1);
+		}
+		&:active {
+			transition: none;
+			// box-shadow: 0 1px 2px hwb(0 0% 100% / 0.3) inset;
+			box-shadow: 0 0 2px 1px hwb(0 0% 100% / 0.05), // 外部阴影
+						0 6px 12px hwb(0 0% 100% / 0.1) inset; // 内部凹陷阴影
+			transform: translateY(0.5px);
+		}
+		div {
+			width: 12px;
+			height: 12px;
+			background-size: 300%;	/* 三倍大小 */
+			background-position-x: 0px;
+			background-size: 300%;	/* 三倍大小 */
+			background-image: url(./deleteNpause_button.svg);
+			pointer-events: none;
+			&:hover {
+				background-position-y: -16px;
+			}
+			&:hover {
+				background-position-y: -32px;
+			}
+		}
+	}
+}
+
+// 状态指示器的动画
+.statusIconAnimation-enter-from {
+	/* z-index: 0; */
+	opacity: 0;
+	transform: translateX(-16px);
+}
+.statusIconAnimation-enter-active, .statusIconAnimation-leave-active {
+	transition: opacity 0.3s, transform 0.5s cubic-bezier(0.2, 1.25, 0.3, 1);
+}
+.statusIconAnimation-enter-to, .statusIconAnimation-leave-from {
+	/* z-index: 1; */
+	opacity: 1;
+	transform: translateX(0);
+}
+.statusIconAnimation-leave-active {
+	transition: opacity 0.3s, transform 0.3s cubic-bezier(0.5, 0, 1, 1);
+}
+.statusIconAnimation-leave-to {
+	opacity: 0;
+	transform: translateX(16px);
+}
+
+// 主题
+.taskWrapper[data-color_theme="themeLight"] {
+	.progressBlue {
+		background: linear-gradient(180deg, hwb(225 80% 0% / 0.7), hwb(225 60% 0% / 0.7));
+		box-shadow: 0 4px 12px 0 hwb(225 40% 20% / 0.4),
+					0 0px 1px 0.75px hwb(225 80% 0%) inset;
+	}
+	.progressGreen {
+		background: linear-gradient(180deg, hwb(120 70% 0% / 0.7), hwb(120 50% 0% / 0.7));
+		box-shadow: 0 4px 12px 0 hwb(120 40% 20% / 0.4),
+					0 0px 1px 0.75px hwb(120 80% 0%) inset;
+	}
+	.progressYellow {
+		background: linear-gradient(180deg, hwb(50 60% 0% / 0.7), hwb(50 40% 0% / 0.7));
+		box-shadow: 0 4px 12px 0 hwb(50 40% 20% / 0.4),
+					0 0px 1px 0.75px hwb(50 80% 0%) inset;
+	}
+	.progressRed {
+		background: linear-gradient(180deg, hwb(0 75% 0% / 0.7), hwb(0 55% 0% / 0.7));
+		box-shadow: 0 4px 12px 0 hwb(0 40% 20% / 0.4),
+					0 0px 1px 0.75px hwb(0 80% 0%) inset;
+	}
+	.progressGray {
+		background: linear-gradient(180deg, hwb(0 93% 7% / 0.7), hwb(0 87% 13% / 0.7));
+		box-shadow: 0 4px 12px 0 hwb(0 50% 50% / 0.2),
+					0 0px 1px 0.5px hwb(0 50% 50% / 0.1) inset;
+	}
+}
+
+.taskWrapper[data-color_theme="themeDark"] {
+	text-shadow: 1px 1px 1px rgba(0, 0, 0, 0.3);
+	.progressBlue {
+		background: linear-gradient(180deg, hwb(225 20% 30% / 0.7), hwb(225 25% 15% / 0.7));
+		box-shadow: 0 4px 12px 0 hwb(225 40% 20% / 0.3),
+					0 0px 1px 0.75px hwb(225 80% 0% / 0.5) inset;
+	}
+	.progressGreen {
+		background: linear-gradient(180deg, hwb(120 10% 30% / 0.7), hwb(120 15% 20% / 0.7));
+		box-shadow: 0 4px 12px 0 hwb(120 40% 20% / 0.3),
+					0 0px 1px 0.75px hwb(120 80% 0% / 0.5) inset;
+	}
+	.progressYellow {
+		background: linear-gradient(180deg, hwb(50 0% 25% / 0.7), hwb(50 5% 15% / 0.7));
+		box-shadow: 0 4px 12px 0 hwb(50 40% 20% / 0.3),
+					0 0px 1px 0.75px hwb(50 80% 0% / 0.5) inset;
+	}
+	.progressRed {
+		background: linear-gradient(180deg, hwb(0 20% 30% / 0.7), hwb(0 25% 15% / 0.7));
+		box-shadow: 0 4px 12px 0 hwb(0 40% 20% / 0.3),
+					0 0px 1px 0.75px hwb(0 80% 0% / 0.5) inset;
+	}
+	.progressGray {
+		background: linear-gradient(180deg, hwb(0 35% 65% / 0.7), hwb(0 25% 75% / 0.7));
+		box-shadow: 0 4px 12px 0 hwb(0 50% 50% / 0.15),
+					0 0px 1px 0.5px hwb(0 50% 50% / 0.1) inset;
+	}
+	.cmdArea .code textarea {
+		background: hwb(var(--bg96) / 0.4);
+	}
+}
+
+.taskNameTip, .paraAreaTip {
+	:global .tooltip-box {
+		position: relative;
+		top: -1px;
+		padding: 6px 10px;
+		border-radius: 8px;
+		border: none;
+		background-color: hwb(var(--hoverLightBg) / 0.5);
+		backdrop-filter: blur(8px) contrast(110%);
+		box-shadow: 0 0 1px 0.5px hwb(var(--hoverLightBg)),
+					0 1.5px 4px 0 hwb(var(--hoverShadow) / 0.2),
+					0 1px 0.5px 0px hwb(var(--highlight) / 0.5) inset;	// 上高光
+		.tooltip-message {
+			font-size: 12px;
+			line-height: 16px;
+		}
+	}
+}

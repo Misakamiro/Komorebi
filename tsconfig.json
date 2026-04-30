@@ -1,0 +1,43 @@
+// tsconfig.json
+{
+	"include": [
+		"src/backend/**/*",
+		"src/common/**/*",
+		"src/main/**/*",
+		"src/preload/**/*",
+		"src/renderer/**/*"
+	],
+	"compilerOptions": {
+		"outDir": "./dist暂时无用/",
+		"noImplicitAny": true,
+		"sourceMap": true,
+		// "module": "esnext",
+		"module": "Node16",
+		"target": "esnext",
+		// 若使用 "react"，ts 将检查 react 的相关依赖项，也将使用 react 的特定语法。而本项目使用的不是 react，故使用 "preserve"
+		// https://cn.vuejs.org/guide/extras/render-function.html#jsx-tsx
+		"jsx": "preserve",
+		"jsxImportSource": "vue",
+		"allowJs": true,
+		"moduleResolution": "node16",
+		"esModuleInterop": true, // 对于 upath 包，不开启此选项的情况下需要 import * as fs from 'fs'
+		"baseUrl": ".",
+		"paths": {
+			"@common/*": [
+				"src/common/*"
+			],
+			"@backend/*": [
+				"src/backend/*"
+			],
+			"@renderer/*": [
+				"src/renderer/src/*"
+			],
+			"@preload/*": [
+				"src/preload/*"
+			],
+			"@main/*": [
+				"src/main/*"
+			]
+		}
+	}
+}

@@ -1,0 +1,95 @@
+.dialog {
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	background: none;
+	border: none;
+	margin: 0;
+	padding: 0;
+	position: absolute;
+	top: 0;
+	width: 100%;
+	height: 100%;
+	overflow: hidden;
+	color: inherit;
+	z-index: 5;
+
+	.background {
+		position: absolute;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
+		will-change: opacity;
+		background-color: hwb(var(--bg90) / 0.3);
+		backdrop-filter: blur(1.5px);
+	}
+	@keyframes bganimation {
+		from {
+			opacity: 0;
+		}
+		to {
+			opacity: 1;
+		}
+	}
+	.bganimate-enter-active {
+		animation: bganimation ease-out 0.3s;
+	}
+	.bganimate-leave-active {
+		animation: bganimation ease-out 0.2s reverse;
+	}
+
+	.box {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		min-width: 200px;
+		padding: 16px 24px;
+		border-radius: 8px;
+		background-color: hwb(var(--bg97) / 0.8);
+		box-shadow: 0 3px 2px -2px hwb(var(--highlight)) inset,	// 上亮光
+				0 16px 32px 0px hwb(var(--hoverShadow) / 0.02),
+				0 6px 6px 0px hwb(var(--hoverShadow) / 0.02),
+				0 0 0 1px hwb(var(--highlight) / 0.9);	// 包边
+		transition: transform cubic-bezier(0.33, 1, 1, 1) 0.3s, opacity linear 0.2s;
+		z-index: 0;	// 可能是由于 chromium 的 bug，不加这个会导致背景的 backdrop-filter 应用到 box 上
+		&>*:not(:last-child) {
+			margin-bottom: 12px;
+		}
+		.image {
+			height: 96px;
+			&>* {
+				height: 100%;
+			}
+		}
+		.title {
+			font-size: 17px;
+			font-weight: 500;
+		}
+		.content {
+			font-size: 14px;
+			margin: 4px 0 24px;
+		}
+		.buttons {
+			display: flex;
+		}
+	}
+	.boxanimate-enter-from {
+		transform: scale(1.1);
+		opacity: 0;
+	}
+	.boxanimate-enter-active {
+		transition: transform cubic-bezier(0.33, 1, 1, 1) 0.3s, opacity linear 0.2s;
+	}
+	.boxanimate-enter-to, .boxanimate-leave-from {
+		transform: scale(1);
+		opacity: 1;
+	}
+	.boxanimate-leave-active {
+		transition: all linear 0.2s;
+	}
+	.boxanimate-leave-to {
+		transform: scale(0.9);
+		opacity: 0;
+	}
+}

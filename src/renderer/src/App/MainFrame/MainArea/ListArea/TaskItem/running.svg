@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+  <filter id="statusRunningRounded">
+    <feMorphology in="SourceGraphic" operator="erode" radius="4" result="r1" />
+    <feMorphology in="r1" operator="dilate" radius="4" />
+  </filter>
+  <g filter="url(#statusRunningRounded)">
+    <polygon points="24,16 24,112 104,64" fill="#20df40" />
+    <polygon points="-56,16 -56,112 24,64" fill="#20df40" />
+    <polygon points="104,16 104,112 184,64" fill="#20df40" />
+    <animateTransform
+      attributeName="transform"
+      from="0,0"
+      to="80,0"
+      dur="0.7s"
+      repeatCount="indefinite"
+    />
+  </g>
+</svg>
