@@ -96,6 +96,7 @@ Komorebi 基于这些优秀项目构建：
 
 - `LICENSE`
 - `NOTICE-Komorebi.md`
+- `licenses/FFBox-LICENSE.txt`
 - `tools/LICENSE-ffmpeg.txt`
 - `tools/LICENSE-ncmdump.txt`
 
