@@ -11,12 +11,13 @@ import DragFilesOverlay from './DragFilesOverlay/DragFilesOverlay.vue';
 import Button, { ButtonType } from '@renderer/components/Button/Button';
 import ImageDisconnected from './disconnect.svg?component';
 import ImageLoading from '@renderer/assets/loading.svg?component';
+import ImageStartupGuide from '@renderer/assets/komorebi-guides/ffmpeg-guide.png';
 
 const appStore = useAppStore();
 
 const draggingCount = ref(0);
 
-const loginBoxVisible = computed(() => [ServiceBridgeStatus.Idle, ServiceBridgeStatus.Connecting].includes(appStore.currentServer?.entity.status));
+const loginBoxVisible = computed(() => appStore.currentServer?.entity.status === ServiceBridgeStatus.Connecting);
 const isConnecting = computed(() => [ServiceBridgeStatus.Connecting, ServiceBridgeStatus.Reconnecting].includes(appStore.currentServer?.entity.status));
 const isDisconnected = computed(() => [ServiceBridgeStatus.Disconnected, ServiceBridgeStatus.Reconnecting].includes(appStore.currentServer?.entity.status));
 
@@ -63,8 +64,11 @@ const handleDrop = () => {
 					<div v-if="loginBoxVisible" class="loginBox">
 						<h2>正在启动本地处理服务</h2>
 						<div class="box">
-							<div class="svg">
-								<ImageLoading style="width: 120px;" />
+							<div class="startupVisual">
+								<img class="startupGuide" :src="ImageStartupGuide" alt="" draggable="false" />
+								<div class="startupSpinner">
+									<ImageLoading style="width: 48px;" />
+								</div>
 							</div>
 							<p>Komorebi 正在准备内置 FFmpeg、ffprobe 与 ncmdump。</p>
 						</div>
@@ -168,7 +172,7 @@ const handleDrop = () => {
 					top: 0;
 					bottom: 0;
 					width: min(560px, calc(100vw - 96px));
-					height: 260px;
+					height: 328px;
 					margin: auto;
 					z-index: 4;
 					text-align: center;
@@ -199,6 +203,34 @@ const handleDrop = () => {
 						display: flex;
 						align-items: center;
 						justify-content: center;
+					}
+					.startupVisual {
+						position: relative;
+						width: 168px;
+						height: 168px;
+						display: flex;
+						align-items: center;
+						justify-content: center;
+					}
+					.startupGuide {
+						width: 168px;
+						height: 168px;
+						object-fit: contain;
+						pointer-events: none;
+						filter: drop-shadow(0 8px 18px hwb(var(--hoverShadow) / 0.16));
+					}
+					.startupSpinner {
+						position: absolute;
+						right: 4px;
+						bottom: 4px;
+						width: 54px;
+						height: 54px;
+						display: flex;
+						align-items: center;
+						justify-content: center;
+						border-radius: 50%;
+						background: hwb(var(--bg99) / 0.82);
+						box-shadow: 0 4px 14px hwb(var(--hoverShadow) / 0.16);
 					}
 					.buttonBox {
 						margin-top: 24px;

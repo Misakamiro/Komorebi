@@ -1,5 +1,5 @@
 import EventEmitter from 'events';
-import { ChildProcess, SpawnOptions } from 'child_process';
+import { ChildProcess, SpawnOptions, spawn } from 'child_process';
 import { TypedEventEmitter } from '@common/utils';
 import { spawnInvoker, ErrorType } from '@common/spawnInvoker';
 
@@ -67,6 +67,63 @@ class ProcessInstance extends (EventEmitter as new () => TypedEventEmitter<Proce
 			return;
 		}
 		this.process.kill(str);
+	}
+
+	public getPid(): number | undefined {
+		return this.process?.pid;
+	}
+
+	public killTree(): Promise<void> {
+		const currentProcess = this.process;
+		if (!currentProcess) {
+			return Promise.resolve();
+		}
+		const pid = currentProcess.pid;
+		if (!pid) {
+			try {
+				currentProcess.kill('SIGKILL');
+			} catch {}
+			return Promise.resolve();
+		}
+		return new Promise((resolve) => {
+			let done = false;
+			const finish = () => {
+				if (done) {
+					return;
+				}
+				done = true;
+				resolve();
+			};
+			this.once('closed', finish);
+			const timer = setTimeout(finish, 3000);
+			timer.unref?.();
+			if (process.platform === 'win32') {
+				try {
+					const killer = spawn('taskkill', ['/PID', String(pid), '/T', '/F'], {
+						detached: false,
+						shell: false,
+						windowsHide: true,
+					});
+					killer.once('error', () => {
+						try {
+							currentProcess.kill('SIGKILL');
+						} catch {}
+						finish();
+					});
+					killer.once('close', finish);
+				} catch {
+					try {
+						currentProcess.kill('SIGKILL');
+					} catch {}
+					finish();
+				}
+			} else {
+				try {
+					currentProcess.kill('SIGKILL');
+				} catch {}
+				finish();
+			}
+		});
 	}
 
 	/**

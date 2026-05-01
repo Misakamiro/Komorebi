@@ -1,21 +1,30 @@
 import { app, dialog, BrowserWindow, ipcMain, Menu, session, shell } from 'electron';
 // import ElectronStore from 'electron-store';
 import { spawn, SpawnOptions } from 'child_process';
+import net from 'net';
 import path from 'path';
 import parsePath from 'parse-path';
 import CryptoJS from 'crypto-js';
 import { utimes } from 'utimes';
 import fs from 'fs/promises';
+import { fileURLToPath } from 'url';
 import { getMachineId } from './utils';
 import ProcessInstance from '@common/processInstance';
 import localConfig from '@common/localConfig';
 import i11n from '@common/i11n/i11n';
+import { getFileExtension } from '@common/mediaExtensions';
 import { convertFFBoxMenuToElectronMenuTemplate, getOs } from './utils';
 import osBridge from './osBridge';
 import * as mica from './mica';
 // import { FFBoxService } from './service/FFBoxService';
 
 const APP_NAME = 'Komorebi';
+const cleanPathInput = (value: string) => value.trim().replace(/^["']|["']$/g, '');
+const isLikelyLocalFilesystemPath = (value: string) =>
+	/^\\\\[^\\]+\\[^\\]+/.test(value) ||
+	/^[a-zA-Z]:[\\/]/.test(value) ||
+	/^\/(?!\/)/.test(value) ||
+	value.toLowerCase().startsWith('file:');
 
 interface DownloadMap {
 	item?: Electron.DownloadItem;
@@ -29,7 +38,9 @@ class ElectronApp {
 	mainWindow: BrowserWindow | null = null;
 	// electronStore: ElectronStore;
 	service: ProcessInstance | null = null;
+	servicePort = 33269;
 	blockWindowClose = true;
+	isQuitting = false;
 	downloadMap: Map<string, DownloadMap> = new Map();
 
 	constructor() {
@@ -74,8 +85,12 @@ class ElectronApp {
 			// FFBoxService 进程尽管没有指定 detached
 			// 但在 macOS 上，主进程退出不会导致 service 退出；在 linux 上，主进程调用了 app.exit() 之后依然会等待 service 退出
 			// 故保险起见主动关闭
-			this.service?.sendSig(9);
-			app.exit();
+			this.isQuitting = true;
+			void this.shutdownService().finally(() => app.exit());
+		});
+		app.on('before-quit', () => {
+			this.isQuitting = true;
+			void this.shutdownService();
 		});
 
 		// Set app user model id for windows
@@ -154,7 +169,7 @@ class ElectronApp {
 		}
 	
 		mainWindow.on('close', (e) => {
-			if (this.blockWindowClose) {
+			if (!this.isQuitting && this.blockWindowClose) {
 				e.preventDefault();
 				mainWindow!.webContents.send('exitConfirm');
 			}
@@ -239,8 +254,31 @@ class ElectronApp {
 		return '';
 	}
 
-	async createService(): Promise<void> {
-		this.service = new ProcessInstance();
+	private async isPortAvailable(port: number): Promise<boolean> {
+		return new Promise((resolve) => {
+			const tester = net.createServer()
+				.once('error', () => resolve(false))
+				.once('listening', () => {
+					tester.close(() => resolve(true));
+				})
+				.listen(port, '::');
+		});
+	}
+
+	private async getAvailableServicePort(startPort = 33269): Promise<number> {
+		for (let offset = 0; offset < 30; offset++) {
+			const port = startPort + offset;
+			if (await this.isPortAvailable(port)) {
+				return port;
+			}
+		}
+		throw new Error(`No available local service port found from ${startPort}.`);
+	}
+
+	async createService(): Promise<number> {
+		if (this.service) {
+			return this.servicePort;
+		}
 		let servicePath = '';
 		if (getOs() === 'Windows') {
 			servicePath = await this.firstExecutable([
@@ -266,24 +304,70 @@ class ElectronApp {
 			]);
 		}
 		// this.mainWindow.webContents.send('debugMessage', '选出路径', servicePath);
+		const service = new ProcessInstance();
+		const port = await this.getAvailableServicePort();
+		this.service = service;
+		this.servicePort = port;
 		return new Promise((resolve, reject) => {
 			if (!servicePath) {
 				reject(new Error('KomorebiService executable was not found.'));
 				return;
 			}
-			this.service.start(servicePath, [], { cwd: path.dirname(servicePath) }).then(() => {
+			let settled = false;
+			const finish = (error?: Error) => {
+				if (settled) {
+					return;
+				}
+				settled = true;
+				if (error) {
+					if (this.service === service) {
+						this.service = null;
+					}
+					reject(error);
+				} else {
+					osBridge.sendLoadStatus('service');
+					resolve(port);
+				}
+			};
+			service.start(servicePath, ['--port', String(port)], { cwd: path.dirname(servicePath) }).then(() => {
+				service.once('escaped', ({ code }) => {
+					finish(new Error(`KomorebiService exited with code ${code}.`));
+				});
+				service.once('closed', () => {
+					if (this.service === service) {
+						this.service = null;
+					}
+				});
+				service.on('stderr', ({ content }) => {
+					console.warn(`KomorebiService stderr: ${content}`);
+				});
 				// 需要加一点延迟才报告成功，主要是因为 service 启动 server 需要一定时间，待 server 启动好之后才让 renderer 去连接
 				// 在 Windows 中可能不需要加这个延时，但是在 macOS 和 Linux 上似乎都是需要的
 				// 另外，调试过程中发现，如果尝试使用 debugMessage 把调试消息发送给 renderer，当程序忙的时候 renderer 并不一定会按实际顺序去显示，因此需要适当增加延时以验证 Promise 正常工作
 				// 150ms 延迟在 Linux 上很可能不够。但目前的设计是在 renderer 那边自动重试，主进程尽快报告完成。
 				setTimeout(() => {
-					osBridge.sendLoadStatus('service');
-					resolve(undefined);
-				}, 150);
-			}).catch(() => {
-				reject();
+					finish();
+				}, 300);
+			}).catch((error) => {
+				finish(error instanceof Error ? error : new Error(String(error)));
 			});
 		});
+	}
+
+	private async shutdownService(): Promise<void> {
+		const service = this.service;
+		if (!service) {
+			return;
+		}
+		this.service = null;
+		try {
+			await service.killTree();
+		} catch (error) {
+			console.warn(`Failed to terminate KomorebiService process tree: ${error}`);
+			try {
+				service.sendSig(9);
+			} catch {}
+		}
 	}
 
 	mountIpcEvents(): void {
@@ -336,38 +420,57 @@ class ElectronApp {
 
 		// 将包含多行路径的字符串归类为本地文件、本地目录、远程文件的数量统计，及每行的类型
 		ipcMain.handle('getPathsCategorized', async (event, value: string) => {
-			const paths = value.split('\n').filter((line) => line !== '');
+			const paths = value.split('\n').map(cleanPathInput).filter((line) => line !== '');
 			// const [localFiles, localDirs, remotes, unknowns] = [[], [], [], []] as string[][];
 			let [localFilesCount, localDirsCount, remotesCount, unknownsCount] = [0, 0, 0, 0];
 			const lineResults: ('lf' | 'ld' | 'r' | 'u')[] = [];
-			for (const path of paths) {
-				const fixedPath = path.startsWith('\\\\') ? 'file://' + path.slice(2) : path;	// 由于 node 的 URL 在解析 Windows 网络共享路径时会出错，故手动修一下
-				const result = parsePath(fixedPath);
-				if (result.parse_failed) {
-					// unknowns.push(path);
-					unknownsCount++;
-					lineResults.push('u');
-				} else if (result.host) {
-					// remotes.push(path);
-					remotesCount++;
-					lineResults.push('r');
-				} else {
+			for (const inputPath of paths) {
+				const localPathCandidates = [inputPath];
+				if (inputPath.toLowerCase().startsWith('file:')) {
 					try {
-						const stats = await fs.lstat(path);
+						localPathCandidates.push(fileURLToPath(inputPath));
+					} catch {}
+				}
+				let localPathHandled = false;
+				for (const localPath of [...new Set(localPathCandidates)]) {
+					try {
+						const stats = await fs.lstat(localPath);
 						if (stats.isDirectory()) {
-							// localDirs.push(path);
+							// localDirs.push(localPath);
 							localDirsCount++;
 							lineResults.push('ld');
 						} else {
-							// localFiles.push(path);
+							// localFiles.push(localPath);
 							localFilesCount++;
 							lineResults.push('lf');
 						}
+						localPathHandled = true;
+						break;
 					} catch (e) {
-						// unknowns.push(path);
-						unknownsCount++;
-						lineResults.push('u');
+						// Not a directly readable local path; continue below as a remote URL candidate.
 					}
+				}
+				if (localPathHandled) {
+					continue;
+				}
+				if (isLikelyLocalFilesystemPath(inputPath) && getFileExtension(inputPath)) {
+					localFilesCount++;
+					lineResults.push('lf');
+					continue;
+				}
+				const result = parsePath(inputPath);
+				if (result.parse_failed) {
+					// unknowns.push(inputPath);
+					unknownsCount++;
+					lineResults.push('u');
+				} else if (result.host) {
+					// remotes.push(inputPath);
+					remotesCount++;
+					lineResults.push('r');
+				} else {
+					// unknowns.push(inputPath);
+					unknownsCount++;
+					lineResults.push('u');
 				}
 			}
 			return { localFilesCount, localDirsCount, remotesCount, unknownsCount, lineResults };

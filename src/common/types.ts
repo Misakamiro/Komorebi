@@ -205,6 +205,7 @@ export interface InputInfo {
 	path: string;
 	duration?: number;
 	bitrate?: number;
+	size?: number;
 	start?: number;
 	metadata: { [key: string]: string };
 	streams: StreamInfo[];

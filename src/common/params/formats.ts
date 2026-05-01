@@ -1,6 +1,7 @@
 import { getMenuItemByValue, MenuItem, NarrowedMenuItem } from "@common/menu";
 import { OutputParams_mux, OutputParams_input } from "../types";
 import { Parameter } from "./parameter";
+import { normalizeFilesystemPathForKomorebi } from "../filePath";
 
 export interface Demuxer {
 	isDevice: boolean;
@@ -617,6 +618,7 @@ export function getMuxFFmpegParam(muxParams: OutputParams_mux, filedir: string, 
 			outputFilePath = outputFilePath.replace(/\[filedir\]/g, filedir);
 			outputFilePath = outputFilePath.replace(/\[filename\]/g, fileName);
 			outputFilePath = outputFilePath.replace(/\[fileext\]/g, extension);
+			outputFilePath = normalizeFilesystemPathForKomorebi(outputFilePath);
 		}
 		if (withQuotes) {
 			outputFilePath = '"' + outputFilePath + '"';

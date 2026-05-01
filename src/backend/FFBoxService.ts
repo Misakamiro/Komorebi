@@ -5,7 +5,7 @@ import fs from 'fs';
 import fsPromise from 'fs/promises';
 import { utimes } from 'utimes';
 import path from 'path';
-import { ServiceTask, TaskStatus, OutputParams, FFBoxServiceEvent, Notification, NotificationLevel, FFmpegProgress, WorkingStatus, FFBoxServiceInterface, FFmpegInfo, EncoderDetail, FFmpegCodecDetail, FFmpegFilterDetail, FFmpegMuxerDetail, FFmpegDemuxerDetail, NcmTaskParams, InputInfo } from '@common/types';
+import { ServiceTask, TaskStatus, OutputParams, FFBoxServiceEvent, Notification, NotificationLevel, FFmpegProgress, WorkingStatus, FFBoxServiceInterface, FFmpegInfo, FFmpegCodecDetail, FFmpegFilterDetail, FFmpegMuxerDetail, FFmpegDemuxerDetail, NcmTaskParams, InputInfo } from '@common/types';
 import i11n from '@common/i11n/i11n';
 import { genTaskOutputFiles, getFFmpegParaArray } from '@common/getFFmpegParaArray';
 import { buildKomorebiFFmpegArgs, buildKomorebiRemuxFallbackParams, buildNcmDumpArgs, getKomorebiMediaHints, shouldKomorebiRemuxTranscode } from '@common/komorebiPresets';
@@ -23,6 +23,23 @@ export interface FFBoxServerEvent {
 	serverClose: () => void;
 }
 
+type FFmpegCodecsOverview = {
+	videoCodecs: { name: string; description: string; encoders: string[] }[];
+	audioCodecs: { name: string; description: string; encoders: string[] }[];
+};
+
+type FFmpegFormatsOverview = {
+	muxers: { name: string; description: string }[];
+	demuxers: { name: string; description: string; isDevice: boolean }[];
+};
+
+type FFmpegFiltersOverview = {
+	name: string;
+	inputType: string;
+	outputType: string;
+	description: string;
+}[];
+
 export class FFBoxService extends (EventEmitter as new () => TypedEventEmitter<FFBoxServiceEvent & FFBoxServerEvent>) implements FFBoxServiceInterface {
 	public tasklist: ServiceTask[] = [];
 	private latestTaskId = 0;
@@ -30,13 +47,15 @@ export class FFBoxService extends (EventEmitter as new () => TypedEventEmitter<F
 	public ffmpegPath = '';
 	public ncmdumpPath = '';
 	public ffmpegInfo: FFmpegInfo = { version: '', scanning: false, videoEncodersCount: 0, audioEncodersCount: 0, filtersCount: 0, muxersCount: 0, demuxersCount: 0 };
-	public ffmpegCodecs: { video: FFmpegCodecDetail[], audio: FFmpegCodecDetail[]; };
-	public ffmpegFormats: { muxer: FFmpegMuxerDetail[], demuxer: FFmpegDemuxerDetail[]; };
+	public ffmpegCodecs: { video: FFmpegCodecDetail[], audio: FFmpegCodecDetail[]; } = { video: [], audio: [] };
+	public ffmpegFormats: { muxer: FFmpegMuxerDetail[], demuxer: FFmpegDemuxerDetail[]; } = { muxer: [], demuxer: [] };
 	public ffmpegFilters: FFmpegFilterDetail[] = [];
 	public notifications: Notification[] = [];
 	private latestNotificationId = 0;
+	private recentNotifications: Map<string, number> = new Map();
 	public functionLevel = 100;
 	public machineId: string;
+	private ffmpegScanToken = 0;
 	// 设置部分
 	private maxThreads = 2;
 	private customFFmpegPath: string;
@@ -131,6 +150,58 @@ export class FFBoxService extends (EventEmitter as new () => TypedEventEmitter<F
 			}
 		}
 		return getFFmpegParaArray({ outputParams: task.after });
+	}
+
+	private coerceProgressStatus(status: FFmpegProgress, previous?: FFmpegProgress): FFmpegProgress {
+		const fallback = previous || { frame: 0, fps: 0, q: 0, size: 0, time: 0, bitrate: 0, speed: 0 };
+		const read = (key: keyof FFmpegProgress) => {
+			const value = status[key];
+			if (Number.isFinite(value) && value >= 0) {
+				return value;
+			}
+			return Number.isFinite(fallback[key]) ? fallback[key] : 0;
+		};
+		return {
+			frame: read('frame'),
+			fps: read('fps'),
+			q: Number.isFinite(status.q) ? status.q : fallback.q,
+			size: read('size'),
+			time: read('time'),
+			bitrate: read('bitrate'),
+			speed: read('speed'),
+		};
+	}
+
+	private appendProgressStatus(id: number, task: ServiceTask, status: FFmpegProgress): void {
+		const progressLog = task.progressLog;
+		const time = new Date().getTime() / 1000 - progressLog.lastStarted + progressLog.elapsed;
+		const lastValue = (log: Array<[number, number]>) => log.length ? log[log.length - 1][1] : 0;
+		const previous: FFmpegProgress = {
+			frame: lastValue(progressLog.frame),
+			fps: 0,
+			q: 0,
+			size: lastValue(progressLog.size),
+			time: lastValue(progressLog.time),
+			bitrate: 0,
+			speed: 0,
+		};
+		let safeStatus: FFmpegProgress;
+		try {
+			safeStatus = this.coerceProgressStatus(status, previous);
+			for (const parameter of ['time', 'frame', 'size']) {
+				const _parameter = parameter as 'time' | 'frame' | 'size';
+				progressLog[_parameter].push([time, safeStatus[_parameter]]);
+			}
+		} catch (error) {
+			log.warn(`[任务 ${id}] 忽略异常进度数据：${error}`);
+			safeStatus = previous;
+		}
+		this.emit('progressUpdate', {
+			taskId: id,
+			time,
+			status: safeStatus,
+		});
+		webhookManager.triggerTaskEvent('task.progress', id, { taskId: id, progress: safeStatus });
 	}
 
 	constructor() {
@@ -233,6 +304,7 @@ export class FFBoxService extends (EventEmitter as new () => TypedEventEmitter<F
 		this.ffmpegInfo = { version: '', scanning: true, videoEncodersCount: 0, audioEncodersCount: 0, muxersCount: 0, demuxersCount: 0, filtersCount: 0 };
 		this.emitFFmpegInfo();
 		const probingPath = this.ffmpegPath;
+		const scanToken = ++this.ffmpegScanToken;
 		const ffmpeg = new FFmpeg(this.ffmpegPath, 1);
 		ffmpeg.on('version', async ({ content }) => {
 			if (this.ffmpegPath !== probingPath) {
@@ -264,13 +336,13 @@ export class FFBoxService extends (EventEmitter as new () => TypedEventEmitter<F
 					} catch (error) {
 						log.info(`已获取 FFmpeg 路径 ${this.ffmpegPath} 版本 ${content}。缓存中的编码器和滤镜不可用，即将获取编码器信息。`);
 						setTimeout(() => {
-							this.getFFmpegCodecsAndFilters();
+							this.getFFmpegCodecsAndFilters(scanToken);
 						}, 100);							
 					}
 				} else {
 					log.info(`已获取 FFmpeg 路径 ${this.ffmpegPath} 版本 ${content}。即将获取编码器信息。`);
 					setTimeout(() => {
-						this.getFFmpegCodecsAndFilters();
+						this.getFFmpegCodecsAndFilters(scanToken);
 					}, 100);
 				}
 			} else {
@@ -297,168 +369,128 @@ export class FFBoxService extends (EventEmitter as new () => TypedEventEmitter<F
 		}, 1500);
 	}
 
-	public async getFFmpegCodecsAndFilters(): Promise<void> {
+	private readFFmpegOverview<T>(mode: 3 | 4 | 5, params: string[], eventName: 'codecs' | 'formats' | 'filters', timeoutMs = 15000): Promise<T> {
+		return new Promise((resolve, reject) => {
+			const ffmpeg = new FFmpeg(this.ffmpegPath, mode, params);
+			let settled = false;
+			let timer: NodeJS.Timeout;
+			const finish = (error?: Error, result?: T) => {
+				if (settled) {
+					return;
+				}
+				settled = true;
+				clearTimeout(timer);
+				if (error) {
+					reject(error);
+				} else {
+					resolve(result as T);
+				}
+			};
+			timer = setTimeout(() => {
+				ffmpeg.forceKill(() => {});
+				finish(new Error(`FFmpeg ${params.join(' ')} 扫描超时`));
+			}, timeoutMs);
+			ffmpeg.once(eventName as any, (result: T) => {
+				finish(undefined, result);
+			});
+		});
+	}
+
+	public async getFFmpegCodecsAndFilters(scanToken = ++this.ffmpegScanToken): Promise<void> {
+		const scanningPath = this.ffmpegPath;
+		const isCurrentScan = () => scanToken === this.ffmpegScanToken && scanningPath === this.ffmpegPath;
 		this.ffmpegInfo.scanning = true;
 		this.emitFFmpegInfo();
-		await new Promise((resolve, reject) => {
-			// 获取 codecs
-			const ffmpeg = new FFmpeg(this.ffmpegPath, 3, ['-codecs']);
-			ffmpeg.on('codecs', async (codecsResult) => {
-				log.info(`编码器概览扫描完成，支持视频编码 ${codecsResult.videoCodecs.length} 个、音频编码 ${codecsResult.audioCodecs.length} 个。即将扫描详细信息。`);
-				console.log(codecsResult);
-				const videoFinalResult: FFmpegCodecDetail[] = [];
-				const audioFinalResult: FFmpegCodecDetail[] = [];
-				let videoEncodersCount = 0;
-				let audioEncodersCount = 0;
-				for (const codec of codecsResult.videoCodecs) {
-					const encoderNames = codec.encoders.length ? codec.encoders : [codec.name];
-					const encoderDetails: (EncoderDetail & { name: string; })[] = [];
-					videoEncodersCount += encoderNames.length;
-					for (const encoderName of encoderNames) {
-						// console.log(`正在读取 ${codec.name} ${encoder}`);
-						await new Promise((resolve, _) => {
-							const ffmpeg2 = new FFmpeg(this.ffmpegPath, 3, ['-hide_banner', '-h', `encoder=${encoderName}`]);
-							ffmpeg2.on('codecs', (_, codecResult) => {
-								// console.log(codecResult);
-								encoderDetails.push({ name: encoderName, ...codecResult });
-								resolve(0);
-							});
-						});
-					}
-					videoFinalResult.push({
-						name: codec.name,
-						description: codec.description,
-						encoders: encoderDetails,
-					});
-				}
-				log.info('视频编码器扫描结果', videoFinalResult);
-				this.ffmpegInfo.videoEncodersCount = videoEncodersCount;
-				this.emitFFmpegInfo();
-				for (const codec of codecsResult.audioCodecs) {
-					const encoderNames = codec.encoders.length ? codec.encoders : [codec.name];
-					const encoderDetails: (EncoderDetail & { name: string; })[] = [];
-					audioEncodersCount += encoderNames.length;
-					for (const encoderName of encoderNames) {
-						// console.log(`正在读取 ${codec.name} ${encoder}`);
-						await new Promise((resolve, _) => {
-							const ffmpeg2 = new FFmpeg(this.ffmpegPath, 3, ['-hide_banner', '-h', `encoder=${encoderName}`]);
-							ffmpeg2.on('codecs', (_, codecResult) => {
-								// console.log(codecResult);
-								encoderDetails.push({ name: encoderName, ...codecResult });
-								resolve(0);
-							});
-						});
-					}
-					audioFinalResult.push({
-						name: codec.name,
-						description: codec.description,
-						encoders: encoderDetails,
-					});
-				}
-				log.info('音频编码器扫描结果', audioFinalResult);
-				this.ffmpegInfo.audioEncodersCount = audioEncodersCount;
-				this.emitFFmpegInfo();
-				this.ffmpegCodecs = { video: videoFinalResult, audio: audioFinalResult };
-				parseFFmpegCodecsToCodecsList(this.ffmpegCodecs);
-				resolve(0);
+		try {
+			const codecsResult = await this.readFFmpegOverview<FFmpegCodecsOverview>(3, ['-codecs'], 'codecs');
+			if (!isCurrentScan()) {
+				return;
+			}
+			let videoEncodersCount = 0;
+			let audioEncodersCount = 0;
+			const videoFinalResult: FFmpegCodecDetail[] = codecsResult.videoCodecs.map((codec) => {
+				const encoderNames = codec.encoders.length ? codec.encoders : [codec.name];
+				videoEncodersCount += encoderNames.length;
+				return {
+					name: codec.name,
+					description: codec.description,
+					encoders: encoderNames.map((name) => ({ name, options: [] })),
+				};
 			});
-		});
-		await new Promise((resolve, reject) => {
-			// 获取 muxers/demuxers
-			const ffmpeg = new FFmpeg(this.ffmpegPath, 4, ['-formats']);
-			ffmpeg.on('formats', async (formatsResult) => {
-				log.info(`格式概览扫描完成，支持复用器 ${formatsResult.muxers.length} 个、解复用器 ${formatsResult.demuxers.length} 个。即将扫描详细信息。`);
-				console.log(formatsResult);
-				const muxerFinalResult: FFmpegMuxerDetail[] = [];
-				const demuxerFinalResult: FFmpegDemuxerDetail[] = [];
-				for (const muxer of formatsResult.muxers) {
-					// console.log(`正在读取 ${filter.name}`);
-					await new Promise((resolve, _) => {
-						const ffmpeg2 = new FFmpeg(this.ffmpegPath, 4, ['-hide_banner', '-h', `muxer=${muxer.name}`]);
-						ffmpeg2.on('formats', (_, formatResult) => {
-							muxerFinalResult.push({
-								name: muxer.name,
-								description: muxer.description,
-								extensions: formatResult.commonExtensions,
-								defaultVideoCodec: formatResult.defaultVideoCodec,
-								defaultAudioCodec: formatResult.defaultAudioCodec,
-								options: formatResult.options,
-							});
-							resolve(0);
-						});
-					});
-				}
-				log.info('复用器扫描结果', muxerFinalResult);
-				this.ffmpegInfo.muxersCount = muxerFinalResult.length;
-				this.emitFFmpegInfo();
-				for (const demuxer of formatsResult.demuxers) {
-					// console.log(`正在读取 ${filter.name}`);
-					await new Promise((resolve, _) => {
-						const ffmpeg2 = new FFmpeg(this.ffmpegPath, 4, ['-hide_banner', '-h', `demuxer=${demuxer.name}`]);
-						ffmpeg2.on('formats', (_, formatResult) => {
-							demuxerFinalResult.push({
-								name: demuxer.name,
-								description: demuxer.description,
-								extensions: formatResult.commonExtensions,
-								isDevice: demuxer.isDevice,
-								options: formatResult.options,
-							});
-							resolve(0);
-						});
-					});
-				}
-				log.info('解复用器扫描结果', demuxerFinalResult);
-				this.ffmpegInfo.demuxersCount = demuxerFinalResult.length;
-				this.emitFFmpegInfo();
-				this.ffmpegFormats = { muxer: muxerFinalResult, demuxer: demuxerFinalResult };
-				parseFFmpegMuDeMuxersToList(this.ffmpegFormats);
-				resolve(0);
+			const audioFinalResult: FFmpegCodecDetail[] = codecsResult.audioCodecs.map((codec) => {
+				const encoderNames = codec.encoders.length ? codec.encoders : [codec.name];
+				audioEncodersCount += encoderNames.length;
+				return {
+					name: codec.name,
+					description: codec.description,
+					encoders: encoderNames.map((name) => ({ name, options: [] })),
+				};
 			});
-		});
-		await new Promise((resolve, reject) => {
-			// 获取 filters
-			const ffmpeg = new FFmpeg(this.ffmpegPath, 5, ['-filters']);
-			ffmpeg.on('filters', async (filtersResult) => {
-				log.info(`滤镜概览扫描完成，支持滤镜 ${filtersResult.length} 个。即将扫描详细信息。`);
-				console.log(filtersResult);
-				const result: FFmpegFilterDetail[] = [];
-				for (const filter of filtersResult) {
-					// console.log(`正在读取 ${filter.name}`);
-					await new Promise((resolve, _) => {
-						const ffmpeg2 = new FFmpeg(this.ffmpegPath, 5, ['-hide_banner', '-h', `filter=${filter.name}`]);
-						ffmpeg2.on('filters', (_, codecResult) => {
-							result.push({
-								name: filter.name,
-								description: filter.description,
-								inputType: filter.inputType,
-								outputType: filter.outputType,
-								options: codecResult.options,
-							});
-							resolve(0);
-						});
-					});
-				}
-				log.info('滤镜扫描结果', result);
-				this.ffmpegFilters = result;
+			this.ffmpegCodecs = { video: videoFinalResult, audio: audioFinalResult };
+			this.ffmpegInfo.videoEncodersCount = videoEncodersCount;
+			this.ffmpegInfo.audioEncodersCount = audioEncodersCount;
+			parseFFmpegCodecsToCodecsList(this.ffmpegCodecs);
+			this.emitFFmpegInfo();
+
+			const formatsResult = await this.readFFmpegOverview<FFmpegFormatsOverview>(4, ['-formats'], 'formats');
+			if (!isCurrentScan()) {
+				return;
+			}
+			const muxerFinalResult: FFmpegMuxerDetail[] = formatsResult.muxers.map((muxer) => ({
+				name: muxer.name,
+				description: muxer.description,
+				extensions: muxer.name.includes(',') ? muxer.name.split(',').map((item) => item.trim()).filter(Boolean) : [],
+				options: [],
+			}));
+			const demuxerFinalResult: FFmpegDemuxerDetail[] = formatsResult.demuxers.map((demuxer) => ({
+				name: demuxer.name,
+				description: demuxer.description,
+				extensions: demuxer.name.includes(',') ? demuxer.name.split(',').map((item) => item.trim()).filter(Boolean) : [],
+				isDevice: demuxer.isDevice,
+				options: [],
+			}));
+			this.ffmpegFormats = { muxer: muxerFinalResult, demuxer: demuxerFinalResult };
+			this.ffmpegInfo.muxersCount = muxerFinalResult.length;
+			this.ffmpegInfo.demuxersCount = demuxerFinalResult.length;
+			parseFFmpegMuDeMuxersToList(this.ffmpegFormats);
+			this.emitFFmpegInfo();
+
+			const filtersResult = await this.readFFmpegOverview<FFmpegFiltersOverview>(5, ['-filters'], 'filters');
+			if (!isCurrentScan()) {
+				return;
+			}
+			this.ffmpegFilters = filtersResult.map((filter) => ({
+				name: filter.name,
+				description: filter.description,
+				inputType: filter.inputType,
+				outputType: filter.outputType,
+				options: [],
+			}));
+			this.ffmpegInfo.filtersCount = this.ffmpegFilters.length;
+			this.ffmpegInfo.scanning = false;
+			this.emitFFmpegInfo();
+			log.info(`FFmpeg 能力概览扫描完成：视频编码器 ${videoEncodersCount}，音频编码器 ${audioEncodersCount}，复用器 ${muxerFinalResult.length}，解复用器 ${demuxerFinalResult.length}，滤镜 ${this.ffmpegFilters.length}。`);
+
+			await localConfig.set('ffmpegInfo', {
+				version: this.ffmpegInfo.version,
+				audioEncodersCount: this.ffmpegInfo.audioEncodersCount,
+				videoEncodersCount: this.ffmpegInfo.videoEncodersCount,
+				muxersCount: this.ffmpegInfo.muxersCount,
+				demuxersCount: this.ffmpegInfo.demuxersCount,
+				filtersCount: this.ffmpegInfo.filtersCount,
+				videoCodecs: JSON.stringify(this.ffmpegCodecs.video),
+				audioCodecs: JSON.stringify(this.ffmpegCodecs.audio),
+				muxers: JSON.stringify(this.ffmpegFormats.muxer),
+				demuxers: JSON.stringify(this.ffmpegFormats.demuxer),
+				filters: JSON.stringify(this.ffmpegFilters),
+			});
+		} catch (error) {
+			if (isCurrentScan()) {
 				this.ffmpegInfo.scanning = false;
-				this.ffmpegInfo.filtersCount = result.length;
 				this.emitFFmpegInfo();
-				resolve(0);
-			});	
-		});
-		localConfig.set('ffmpegInfo', {
-			version: this.ffmpegInfo.version,
-			audioEncodersCount: this.ffmpegInfo.audioEncodersCount,
-			videoEncodersCount: this.ffmpegInfo.videoEncodersCount,
-			muxersCount: this.ffmpegInfo.muxersCount,
-			demuxersCount: this.ffmpegInfo.demuxersCount,
-			filtersCount: this.ffmpegInfo.filtersCount,
-			videoCodecs: JSON.stringify(this.ffmpegCodecs.video),
-			audioCodecs: JSON.stringify(this.ffmpegCodecs.audio),
-			muxers: JSON.stringify(this.ffmpegFormats.muxer),
-			demuxers: JSON.stringify(this.ffmpegFormats.demuxer),
-			filters: JSON.stringify(this.ffmpegFilters),
-		});
+			}
+			log.error(`FFmpeg 能力扫描失败：${error instanceof Error ? error.message : error}`);
+		}
 	}
 
 	/**
@@ -600,21 +632,33 @@ export class FFBoxService extends (EventEmitter as new () => TypedEventEmitter<F
 			const realFilePath = task.remoteTask ? `${os.tmpdir()}/FFBoxUploadCache/${filePath}` : filePath;
 			const promise1 = new Promise((resolve) => {
 				const ffmpeg = new FFmpeg(this.ffmpegPath, 2, ['-hide_banner', '-i', realFilePath, '-f', 'null']);
+				let resolved = false;
+				const finish = () => {
+					if (!resolved) {
+						resolved = true;
+						resolve(0);
+					}
+				};
 				ffmpeg.on('data', ({ content }) => {
 					this.setCmdText(id, content);
 				});
 				ffmpeg.on('metadata', ({ content }) => {
-					task.before[inputIndex] = { ...task.before[inputIndex], ...content[0] };	// 目前的逻辑是即使是多输入也是逐个输入跑 metadata
-					resolve(0);
+					if (content[0]) {
+						task.before[inputIndex] = { ...task.before[inputIndex], ...content[0] };	// 目前的逻辑是即使是多输入也是逐个输入跑 metadata
+					}
+					finish();
 				});
+				ffmpeg.on('closed', finish);
+				setTimeout(finish, 5000);
 			})
 			const promise2 = new Promise(async (resolve) => {
 				if (!task.remoteTask) {
 					try {
 						await fsPromise.access(realFilePath, fs.constants.R_OK);
-						const { atime, birthtime, mtime } = fs.statSync(realFilePath);
+						const { atime, birthtime, mtime, size } = fs.statSync(realFilePath);
 						task.before[inputIndex] = {
 							...task.before[inputIndex],
+							size,
 							accessTime: atime.getTime(),
 							createTime: birthtime.getTime(),
 							modifyTime: mtime.getTime(),
@@ -939,18 +983,11 @@ export class FFBoxService extends (EventEmitter as new () => TypedEventEmitter<F
 			this.storeUnfinishedTask();		
 		});
 		newFFmpeg.on('status', (status: FFmpegProgress) => {
-			const progressLog = task.progressLog;
-			const time = new Date().getTime() / 1000 - progressLog.lastStarted + progressLog.elapsed;
-			for (const parameter of ['time', 'frame', 'size']) {
-				const _parameter = parameter as 'time' | 'frame' | 'size';
-				progressLog[_parameter].push([time, status[_parameter]]);
+			try {
+				this.appendProgressStatus(id, task, status);
+			} catch (error) {
+				log.warn(`[任务 ${id}] 处理转码进度失败：${error}`);
 			}
-			this.emit('progressUpdate', {
-				taskId: id,
-				time,
-				status,
-			});
-			webhookManager.triggerTaskEvent('task.progress', id, { taskId: id, progress: status });
 		});
 		newFFmpeg.on('data', ({ content }) => {
 			this.setCmdText(id, content);
@@ -1118,12 +1155,11 @@ export class FFBoxService extends (EventEmitter as new () => TypedEventEmitter<F
 				task.ffmpeg = ffmpeg;
 				ffmpeg.on('data', ({ content }) => this.setCmdText(id, content));
 				ffmpeg.on('status', (status: FFmpegProgress) => {
-					const time = new Date().getTime() / 1000 - task.progressLog.lastStarted + task.progressLog.elapsed;
-					for (const parameter of ['time', 'frame', 'size']) {
-						const key = parameter as 'time' | 'frame' | 'size';
-						task.progressLog[key].push([time, status[key]]);
+					try {
+						this.appendProgressStatus(id, task, status);
+					} catch (error) {
+						log.warn(`[任务 ${id}] 处理 NCM 后处理进度失败：${error}`);
 					}
-					this.emit('progressUpdate', { taskId: id, time, status });
 				});
 				ffmpeg.on('closed', (errorCode, runningResult) => resolve(!errorCode && runningResult !== 'failed'));
 			});
@@ -1591,9 +1627,24 @@ export class FFBoxService extends (EventEmitter as new () => TypedEventEmitter<F
 	 * @param level
 	 */
 	public setNotification(taskId: number | undefined, content: string, level: NotificationLevel): void {
+		const now = new Date().getTime();
+		const key = `${taskId ?? 'global'}|${level}|${content}`;
+		const lastTime = this.recentNotifications.get(key) || 0;
+		if (now - lastTime < 2000) {
+			return;
+		}
+		this.recentNotifications.set(key, now);
+		if (this.recentNotifications.size > 200) {
+			const expiredBefore = now - 10000;
+			for (const [itemKey, itemTime] of this.recentNotifications) {
+				if (itemTime < expiredBefore) {
+					this.recentNotifications.delete(itemKey);
+				}
+			}
+		}
 		const notificationId = this.latestNotificationId++;
 		const notification = {
-			time: new Date().getTime(),
+			time: now,
 			taskId,
 			content,
 			level,

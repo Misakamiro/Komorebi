@@ -13,6 +13,26 @@ import i11n from '@common/i11n/i11n';
 
 // #region server events
 
+const OVERALL_PROGRESS_INTERVAL_MS = 250;
+const TASK_DASHBOARD_INTERVAL_MS = 200;
+
+function clearTaskDashboardTimer(task?: UITask) {
+	if (task?.dashboardTimer) {
+		clearInterval(task.dashboardTimer);
+		task.dashboardTimer = NaN;
+	}
+}
+
+export function clearServerRuntimeTimers(serverData: { overallProgressTimerID: any; tasks: Array<UITask | undefined> | Record<string, UITask | undefined> }) {
+	if (serverData.overallProgressTimerID) {
+		clearInterval(serverData.overallProgressTimerID);
+		serverData.overallProgressTimerID = NaN;
+	}
+	for (const task of Object.values(serverData.tasks)) {
+		clearTaskDashboardTimer(task);
+	}
+}
+
 export function handleFFmpegInfo(server: Server, info: FFmpegInfo) {
 	server.data.ffmpegInfo = info;
 };
@@ -21,7 +41,7 @@ export function handleWorkingStatusUpdate(server: Server, workingStatus: 'start'
 	serverData.workingStatus = workingStatus === 'start' ? WorkingStatus.running : WorkingStatus.idle;
 	// 处理 overallProgressTimer
 	if (serverData.workingStatus === WorkingStatus.running && !serverData.overallProgressTimerID) {
-		let timerID = setInterval(overallProgressTimer, 80, serverData);
+		let timerID = setInterval(overallProgressTimer, OVERALL_PROGRESS_INTERVAL_MS, serverData);
 		serverData.overallProgressTimerID = timerID;
 		overallProgressTimer(serverData);
 	} else if (serverData.workingStatus === WorkingStatus.idle && serverData.overallProgressTimerID) {
@@ -58,11 +78,13 @@ export function handleTasklistUpdate(server: Server, content: Array<number>) {
 		} else if (remoteI >= remoteKeys.length) {
 			// 远端下标越界，说明远端删除了最后面的若干个任务
 			for (let i = localI; i < localKeys.length; i++) {
+				clearTaskDashboardTimer(serverData.tasks[localKeys[i]]);
 				这.selectedTask.delete(localKeys[i]);
 			}
 			break;
 		} else if (localKey < remoteKey) {
 			// 远端跳号了，说明远端删除了中间的任务
+			clearTaskDashboardTimer(serverData.tasks[localKey]);
 			这.selectedTask.delete(localKey);
 			localI++;
 		} else if (localKey === remoteKey) {
@@ -99,7 +121,7 @@ export function handleTaskUpdate(server: Server, id: number, content: Task) {
 	// Object.assign(serverData.tasks[id], task);
 	// timer 相关处理（开始运行时添加定时器，结束或暂停运行时取消定时器）
 	if (task.status === TaskStatus.running && !task.dashboardTimer) {
-		task.dashboardTimer = setInterval(dashboardTimer, 50, task) as any;
+		task.dashboardTimer = setInterval(dashboardTimer, TASK_DASHBOARD_INTERVAL_MS, task) as any;
 		if (task.progressLog.time.length <= 1) {
 			task.dashboard_smooth = {
 				progress: 0,
@@ -143,7 +165,9 @@ export function handleProgressUpdate(server: Server, id: number, time: number, s
 	if (status) {
 		for (const parameter of ['time', 'frame', 'size']) {
 			const _parameter = parameter as 'time' | 'frame' | 'size';
-			task.progressLog[_parameter].push([time, status[_parameter]]);
+			const previous = task.progressLog[_parameter].at(-1)?.[1] ?? 0;
+			const value = status[_parameter];
+			task.progressLog[_parameter].push([time, Number.isFinite(value) && value >= 0 ? value : previous]);
 		}
 	} else {
 		task.progressLog = {

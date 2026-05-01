@@ -231,6 +231,9 @@ export class FFmpeg extends (EventEmitter as new () => TypedEventEmitter<FFmpegI
 		// 暂存所有 InputInfo 相关的行到 readingInputsInfoBuffer，放到这个函数里处理
 		const parseInputInfo = () => {
 			const inputInfoLine = this.readingInputsInfoBuffer[0];
+			if (!inputInfoLine) {
+				return;
+			}
 			const match = inputInfoLine.match(/Input #(\d+), ([\w,]+), from '(.+)':/);
 			if (match) {
 				// this.readingInputIndex = +match[1];
@@ -253,7 +256,9 @@ export class FFmpeg extends (EventEmitter as new () => TypedEventEmitter<FFmpegI
 						i++;
 						while ((thisLine = this.readingInputsInfoBuffer[i] || '').startsWith('    ')) {
 							const match = thisLine.match(/([\w_]+) *: (.+)?/);	// value 有可能为空
-							readingInputInfo.metadata[match[1]] = match[2];
+							if (match) {
+								readingInputInfo.metadata[match[1]] = match[2] || '';
+							}
 							i++;
 						}
 						i--;
@@ -270,24 +275,28 @@ export class FFmpeg extends (EventEmitter as new () => TypedEventEmitter<FFmpegI
 							readingStreamInfo.language = basicMatch[2];
 						}
 						readingStreamInfo.type = type;
-						const detailItems = splitIgnoringParentheses(detail);
-						readingStreamInfo.codec = detailItems[0].match(/\w+/)?.[0];
+						const detailItems = splitIgnoringParentheses(detail || '');
+						const bitrateItem = detailItems.find((item) => item.includes('kb/s'));
+						readingStreamInfo.codec = detailItems[0]?.match(/\w+/)?.[0];
 						if (type === 'Video') {
-							readingStreamInfo.pixelFormat = detailItems[1].match(/\w+/)?.[0];
-							readingStreamInfo.resolution = detailItems[2].match(/\w+/)?.[0];
-							readingStreamInfo.bitrate = +detailItems[3].match(/(\d+) kb\/s/)?.[1];
-							readingStreamInfo.fps = +detailItems[4].match(/(\d+(\.)?\d*) fps/)?.[1];
+							readingStreamInfo.pixelFormat = detailItems[1]?.match(/\w+/)?.[0];
+							readingStreamInfo.resolution = detailItems.find((item) => /\d+x\d+/.test(item))?.match(/\d+x\d+/)?.[0];
+							const bitrate = +(bitrateItem?.match(/(\d+) kb\/s/)?.[1] || NaN);
+							const fps = +(detailItems.find((item) => item.includes('fps'))?.match(/(\d+(\.)?\d*) fps/)?.[1] || NaN);
+							readingStreamInfo.bitrate = Number.isFinite(bitrate) ? bitrate : undefined;
+							readingStreamInfo.fps = Number.isFinite(fps) ? fps : undefined;
 						} else if (type === 'Audio') {
-							readingStreamInfo.sampleRate = +detailItems[1].match(/\d+/)?.[0];
+							const sampleRate = +(detailItems.find((item) => item.includes('Hz'))?.match(/\d+/)?.[0] || NaN);
+							readingStreamInfo.sampleRate = Number.isFinite(sampleRate) ? sampleRate : undefined;
 							readingStreamInfo.channel = detailItems[2];
-							readingStreamInfo.bitrate = +detailItems.find((item) => item.includes('kb/s'))?.match(/\d+/)?.[0] || undefined;
+							readingStreamInfo.bitrate = +(bitrateItem?.match(/\d+/)?.[0] || 0) || undefined;
 						} else if (type === 'Data') {
 							readingStreamInfo.codec = detailItems[0];
-							readingStreamInfo.bitrate = +detailItems.find((item) => item.includes('kb/s'))?.match(/\d+/)?.[0] || undefined;
+							readingStreamInfo.bitrate = +(bitrateItem?.match(/\d+/)?.[0] || 0) || undefined;
 						} else {
-							readingStreamInfo.bitrate = +detailItems.find((item) => item.includes('kb/s'))?.match(/\d+/)?.[0] || undefined;
+							readingStreamInfo.bitrate = +(bitrateItem?.match(/\d+/)?.[0] || 0) || undefined;
 						}
-						readingStreamInfo.isDefault = detailItems[detailItems.length - 1].includes('default');
+						readingStreamInfo.isDefault = detailItems.some((item) => item.includes('default'));
 						readingStreamInfo.infoText = thisLine;
 						// 理论上上面这些需要做一下错误处理，比如说 debugger，或者直接跳过这行
 						while (true) {
@@ -321,9 +330,9 @@ export class FFmpeg extends (EventEmitter as new () => TypedEventEmitter<FFmpegI
 							}
 							const parts = thisLine.split(': ');
 							const [basicInfo, detail] = parts;
-							const detailItems = splitIgnoringParentheses(detail);
-							readingChapterInfo.start = +detailItems[0].match(/\d+(\.\d+)?/)?.[0];
-							readingChapterInfo.end = +detailItems[1].match(/\d+(\.\d+)?/)?.[0];
+							const detailItems = splitIgnoringParentheses(detail || '');
+							readingChapterInfo.start = +(detailItems[0]?.match(/\d+(\.\d+)?/)?.[0] || NaN);
+							readingChapterInfo.end = +(detailItems[1]?.match(/\d+(\.\d+)?/)?.[0] || NaN);
 							readingChapterInfo.infoText = thisLine;
 							const nextLine = this.readingInputsInfoBuffer[i + 1];
 							if (nextLine && (nextLine.includes('Metadata:'))) {
@@ -331,7 +340,7 @@ export class FFmpeg extends (EventEmitter as new () => TypedEventEmitter<FFmpegI
 								i += 2;
 								while ((thisLine = this.readingInputsInfoBuffer[i] || '').startsWith('      ')) {
 									const match = thisLine.match(/([\w_]+) *: (.+)/);
-									if (nextLine.includes('Metadata:')) {
+									if (nextLine.includes('Metadata:') && match) {
 										readingChapterInfo.metadata[match[1]] = match[2];
 									}
 									i++;
@@ -552,7 +561,12 @@ export class FFmpeg extends (EventEmitter as new () => TypedEventEmitter<FFmpegI
 				} else if (thisLine.startsWith('Input #')) {
 					parseInputInfo();
 					this.readingInputsInfoBuffer = [thisLine];
-				} else if (thisLine.includes('Stream mapping:') || thisLine.includes('At least one output file must be specified')) {
+				} else if (
+					thisLine.includes('Stream mapping:') ||
+					thisLine.includes('At least one output file must be specified') ||
+					thisLine.startsWith('Output #') ||
+					thisLine.includes('Output file #')
+				) {
 					parseInputInfo();
 					// if (this.input.vcodec == undefined && this.input.abitrate) {
 					// 	this.input.abitrate = this.input.bitrate;

@@ -110,6 +110,8 @@ const handleConfirm = (item: Props['list'][number], value: string, index: number
 		gap: 6px;
 		isolation: isolate;
 		.item {
+			--item-x: 0px;
+			--item-scale: 1;
 			// width: 40px;
 			height: 30px;
 			box-sizing: border-box;
@@ -126,11 +128,12 @@ const handleConfirm = (item: Props['list'][number], value: string, index: number
 			box-shadow: 0 0 1px 0.5px hwb(var(--highlight)),
 						0 1.5px 3px 0 hwb(var(--hoverShadow) / 0.2);
 			border-left: transparent 3px solid;
-			transition: background-color 0.14s ease, color 0.14s ease, box-shadow 0.14s ease, border-color 0.14s ease, transform 0.14s cubic-bezier(0.2, 0.9, 0.2, 1), opacity 0.14s ease;
-			will-change: transform, background-color;
+			transform: translate3d(var(--item-x), 0, 0) scale(var(--item-scale));
+			transition: background-color 0.16s ease, color 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease, transform 0.16s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.16s ease;
+			will-change: transform;
 			overflow: hidden;
 			&:active {
-				transform: scale(0.985);
+				--item-scale: 0.985;
 				transition-duration: 0.06s;
 			}
 			&:not(.itemSelected):hover::after {
@@ -186,16 +189,16 @@ const handleConfirm = (item: Props['list'][number], value: string, index: number
 			}
 		}
 		.itemSelected {
+			--item-x: 2px;
 			background-color: hwb(var(--bg97) / 0.8);
 			border-radius: 3px 4px 4px 3px;
 			box-shadow: 0 0 2px 1px hwb(var(--hoverShadow) / 0.05), // 外部阴影
 						0 3px 6px hwb(var(--hoverShadow) / 0.1) inset; // 内部凹陷阴影
 			border-left: #49e 3px solid;
-			transform: translateX(2px);
 		}
 		.itemPulse {
-			animation-duration: 0.2s;
-			animation-timing-function: cubic-bezier(0.2, 0.9, 0.2, 1);
+			animation-duration: 0.24s;
+			animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
 		}
 		.itemPulseA {
 			animation-name: radioPulseA;
@@ -208,14 +211,14 @@ const handleConfirm = (item: Props['list'][number], value: string, index: number
 			pointer-events: none;
 		}
 		@keyframes radioPulseA {
-			0% { transform: scale(0.985); }
-			60% { transform: translateX(2px) scale(1.015); }
-			100% { transform: translateX(2px) scale(1); }
+			0% { box-shadow: 0 0 1px 0.5px hwb(var(--highlight)), 0 1.5px 3px 0 hwb(var(--hoverShadow) / 0.2); }
+			55% { box-shadow: 0 0 0 3px hwb(var(--primaryColor) / 0.14), 0 6px 14px hwb(var(--hoverShadow) / 0.14); }
+			100% { box-shadow: 0 0 2px 1px hwb(var(--hoverShadow) / 0.05), 0 3px 6px hwb(var(--hoverShadow) / 0.1) inset; }
 		}
 		@keyframes radioPulseB {
-			0% { transform: scale(0.985); }
-			60% { transform: translateX(2px) scale(1.015); }
-			100% { transform: translateX(2px) scale(1); }
+			0% { box-shadow: 0 0 1px 0.5px hwb(var(--highlight)), 0 1.5px 3px 0 hwb(var(--hoverShadow) / 0.2); }
+			55% { box-shadow: 0 0 0 3px hwb(var(--primaryColor) / 0.14), 0 6px 14px hwb(var(--hoverShadow) / 0.14); }
+			100% { box-shadow: 0 0 2px 1px hwb(var(--hoverShadow) / 0.05), 0 3px 6px hwb(var(--hoverShadow) / 0.1) inset; }
 		}
 	}
 

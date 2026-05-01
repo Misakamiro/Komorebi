@@ -20,6 +20,8 @@ export enum ServiceBridgeStatus {
 
 export class ServiceBridge extends (EventEmitter as new () => TypedEventEmitter<FFBoxServiceEvent & ServeiceBridgeEvent>) implements FFBoxServiceInterface {
 	private ws: WebSocket | null = null;
+	private readonly requestTimeoutMs = 8000;
+	private readonly connectTimeoutMs = 2500;
 	public ip: string;
 	public port: number;
 	public username: string;
@@ -42,12 +44,25 @@ export class ServiceBridge extends (EventEmitter as new () => TypedEventEmitter<
 	/**
 	 * 发送 HTTP 请求
 	 */
+	private async fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = this.requestTimeoutMs): Promise<Response> {
+		const controller = new AbortController();
+		const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+		try {
+			return await fetch(url, {
+				...options,
+				signal: controller.signal,
+			});
+		} finally {
+			window.clearTimeout(timer);
+		}
+	}
+
 	private async httpRequest<T>(method: string, path: string, body?: any): Promise<T> {
 		const headers: HeadersInit = { 'Content-Type': 'application/json' };
 		if (this.sessionId) {
 			headers['Authorization'] = `Bearer ${this.sessionId}`;
 		}
-		const response = await fetch(`http://${this.ip}:${this.port}${path}`, {
+		const response = await this.fetchWithTimeout(`http://${this.ip}:${this.port}${path}`, {
 			method,
 			headers,
 			body: body ? JSON.stringify(body) : undefined,
@@ -80,19 +95,35 @@ export class ServiceBridge extends (EventEmitter as new () => TypedEventEmitter<
 			return;
 		}
 
-		const finalResult = await new Promise(async (connectResult, _) => {
+		const finalResult = await new Promise<boolean>(async (connectResult) => {
+			let settled = false;
+			let wsTimer: number | undefined;
+			const finish = (result: boolean, reason?: string) => {
+				if (settled) {
+					return;
+				}
+				settled = true;
+				if (wsTimer !== undefined) {
+					window.clearTimeout(wsTimer);
+				}
+				if (!result && reason) {
+					this.emit('error', reason);
+				}
+				connectResult(result);
+			};
+
 			// 4.4 版本后的服务器具有登录系统。不支持以前版本的服务器
 			// 5.3 版本大量改用 HTTP request，并且版本接口新增 /api/v1 前缀
 
 			// 1. 检查服务器版本
 			console.log(`serviceBridge: 正在检查服务器版本 http://${this.ip}:${this.port}/api/v1/system/version 或 /version`);
-			const requestOK1 = await new Promise<boolean>((resolve, reject) => {
+			const requestOK1 = await new Promise<boolean>((resolve) => {
 				// 并行发送两个请求，取其中一个成功结果
-				const newVersionRequest = fetch(`http://${this.ip}:${this.port}/api/v1/system/version`, { method: 'get' })
-					.then(() => true)
+				const newVersionRequest = this.fetchWithTimeout(`http://${this.ip}:${this.port}/api/v1/system/version`, { method: 'get' }, this.connectTimeoutMs)
+					.then((response) => response.ok)
 					.catch(() => false);
-				const oldVersionRequest = fetch(`http://${this.ip}:${this.port}/version`, { method: 'get' })
-					.then(() => true)
+				const oldVersionRequest = this.fetchWithTimeout(`http://${this.ip}:${this.port}/version`, { method: 'get' }, this.connectTimeoutMs)
+					.then((response) => response.ok)
 					.catch(() => false);
 				
 				Promise.all([newVersionRequest, oldVersionRequest]).then(([newResult, oldResult]) => {
@@ -100,15 +131,14 @@ export class ServiceBridge extends (EventEmitter as new () => TypedEventEmitter<
 				});
 			});
 			if (!requestOK1) {
-				this.emit('error', '连接失败：获取服务器版本失败（可能是前端与后端版本不匹配，或网络完全不通所致）');
-				connectResult(false);
+				finish(false, '连接失败：获取服务器版本失败（可能是本地服务未启动、端口被占用，或前后端版本不匹配）');
 				return;
 			}
 
 			// 2. HTTP 登录获取 sessionId
 			console.log(`serviceBridge: 正在登录 http://${this.ip}:${this.port}/api/v1/auth/login`);
-			const [loginSuccess, loginResult] = await new Promise<[boolean, any]>((resolve, reject) => {
-				fetch(`http://${this.ip}:${this.port}/api/v1/auth/login`, {
+			const [loginSuccess, loginResult] = await new Promise<[boolean, any]>((resolve) => {
+				this.fetchWithTimeout(`http://${this.ip}:${this.port}/api/v1/auth/login`, {
 					method: 'post',
 					body: JSON.stringify({
 						username: username || '',
@@ -123,18 +153,17 @@ export class ServiceBridge extends (EventEmitter as new () => TypedEventEmitter<
 					}).catch(() => {
 						resolve([false, null]);
 					});
-				}).catch((err) => {
+				}).catch(() => {
 					resolve([false, null]);
 				});
 			});
 
 			if (!loginSuccess) {
 				if (loginResult?.isUserExist === false) {
-					this.emit('error', '登录失败：用户名错误');
+					finish(false, '登录失败：用户名错误');
 				} else {
-					this.emit('error', '登录失败：密码错误');
+					finish(false, '登录失败：密码错误');
 				}
-				connectResult(false);
 				return;
 			}
 
@@ -147,12 +176,20 @@ export class ServiceBridge extends (EventEmitter as new () => TypedEventEmitter<
 			const ws = new WebSocket(`ws://${this.ip}:${this.port}/?sessionId=${this.sessionId}`);
 			this.ws = ws;
 			const 这 = this;
+			wsTimer = window.setTimeout(() => {
+				try {
+					ws.close();
+				} catch {}
+				这.sessionId = undefined;
+				这.functionLevel = NaN;
+				finish(false, 'WebSocket 连接超时');
+			}, this.connectTimeoutMs);
 
 			ws.onopen = async function (event) {
 				console.log(`serviceBridge: WebSocket 连接成功`, event);
 				这.status = ServiceBridgeStatus.Connected;
 				这.emit('connected');
-				connectResult(true);
+				finish(true);
 			};
 
 			ws.onclose = function (event) {
@@ -162,14 +199,19 @@ export class ServiceBridge extends (EventEmitter as new () => TypedEventEmitter<
 					这.status = ServiceBridgeStatus.Disconnected;
 				} else {
 					// 未连接成功，由 onerror 处理过，这里不需处理
+					if (!settled) {
+						finish(false, 'WebSocket 连接已关闭');
+					}
 				}
 				这.sessionId = undefined;
 				这.functionLevel = NaN;
-				这.emit('disconnected');
+				if (这.status === ServiceBridgeStatus.Disconnected) {
+					这.emit('disconnected');
+				}
 			};
 
 			ws.onerror = function (event) {
-				这.emit('error', 'WebSocket 连接失败');
+				finish(false, 'WebSocket 连接失败');
 				// return;
 			};
 
@@ -181,9 +223,7 @@ export class ServiceBridge extends (EventEmitter as new () => TypedEventEmitter<
 		});
 
 		if (!finalResult) {
-			if (this.status === ServiceBridgeStatus.Connecting) {
-				this.status = ServiceBridgeStatus.Idle;
-			} else if (this.status === ServiceBridgeStatus.Reconnecting) {
+			if (this.status === ServiceBridgeStatus.Connecting || this.status === ServiceBridgeStatus.Reconnecting) {
 				this.status = ServiceBridgeStatus.Disconnected;
 			}
 		}

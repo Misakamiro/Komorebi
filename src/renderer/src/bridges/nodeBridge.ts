@@ -4,6 +4,13 @@ import type { Stats } from 'fs';
 import parsePath from 'parse-path';
 import { getEnv } from '@common/utils';
 
+const cleanPathInput = (value: string) => value.trim().replace(/^["']|["']$/g, '');
+const isLikelyLocalFilesystemPath = (value: string) =>
+	/^\\\\[^\\]+\\[^\\]+/.test(value) ||
+	/^[a-zA-Z]:[\\/]/.test(value) ||
+	/^\/(?!\/)/.test(value) ||
+	value.toLowerCase().startsWith('file:');
+
 const nodeBridge = {
 	get env(): 'electron' | 'browser' {
 		if (window.jsb) {
@@ -189,13 +196,17 @@ const nodeBridge = {
 		if (window.jsb) {
 			return window.jsb?.ipcRenderer.invoke('getPathsCategorized', value);
 		} else {
-			const paths = value.split('\n').filter((line) => line !== '');
+			const paths = value.split('\n').map(cleanPathInput).filter((line) => line !== '');
 			// const [localFiles, localDirs, remotes, unknowns] = [[], [], [], []] as string[][];
 			let [localFilesCount, localDirsCount, remotesCount, unknownsCount] = [0, 0, 0, 0];
 			const lineResults: ('lf' | 'ld' | 'r' | 'u')[] = [];
 			for (const path of paths) {
-				const fixedPath = path.startsWith('\\\\') ? 'file://' + path.slice(2) : path;	// 由于 node 的 URL 在解析 Windows 网络共享路径时会出错，故手动修一下
-				const result = parsePath(fixedPath);
+				if (isLikelyLocalFilesystemPath(path)) {
+					localFilesCount++;
+					lineResults.push('lf');
+					continue;
+				}
+				const result = parsePath(path);
 				if (result.parse_failed) {
 					// unknowns.push(path);
 					unknownsCount++;
@@ -237,7 +248,7 @@ const nodeBridge = {
 		window.jsb?.ipcRenderer?.send('openDevTools');
 	},
 
-	startService(): Promise<void> {
+	startService(): Promise<number> {
 		return window.jsb?.ipcRenderer?.invoke('startService');
 	},
 

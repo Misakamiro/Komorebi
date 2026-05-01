@@ -5,6 +5,7 @@ import { ServiceBridgeStatus } from '@renderer/bridges/serviceBridge';
 import { showAddTaskPrompt } from '@renderer/components/misc/AddTasks';
 import nodeBridge from '@renderer/bridges/nodeBridge';
 import i11n from '@common/i11n/i11n';
+import { isKomorebiDroppablePath } from '@common/mediaExtensions';
 import dropFilesOkImage from '@renderer/assets/komorebi-guides/drop-files-ok.png';
 
 const appStore = useAppStore();
@@ -20,17 +21,7 @@ const tr = computed(() => {
 	return i11n.frontend.dragDrop;
 });
 
-const workflowExtensions: Record<string, string[]> = {
-	'video-compress': ['.mp4', '.mkv', '.mov', '.webm', '.avi', '.flv', '.wmv', '.m4v', '.ts', '.m2ts', '.mts', '.mpg', '.mpeg', '.3gp'],
-	'audio-convert': ['.mp3', '.flac', '.wav', '.aac', '.m4a', '.ogg', '.opus', '.wma', '.ac3', '.ape', '.alac', '.aiff', '.aif'],
-	remux: ['.mp4', '.mkv', '.mov', '.webm', '.avi', '.flv', '.wmv', '.m4v', '.ts', '.m2ts', '.mts', '.mpg', '.mpeg', '.3gp', '.mp3', '.flac', '.wav', '.aac', '.m4a', '.ogg', '.opus', '.wma', '.ac3'],
-	ncm: ['.ncm'],
-};
-
-const hasWorkflowExtension = (filePath: string) => {
-	const ext = filePath.slice(filePath.lastIndexOf('.')).toLowerCase();
-	return (workflowExtensions[appStore.komorebi.workflow] || workflowExtensions.remux).includes(ext);
-};
+const hasWorkflowExtension = (filePath: string) => isKomorebiDroppablePath(appStore.komorebi.workflow, filePath);
 
 const expandDroppedPaths = async (paths: string[]) => {
 	const expanded: string[] = [];
@@ -295,11 +286,15 @@ const handleDrop = (event: DragEvent) => {
 				0 1px 0.5px 0px hwb(var(--highlight) / 0.5) inset;	// 上高光
 			backdrop-filter: blur(2px) contrast(110%);
 			font-size: min(1.5cqw, 3.5cqh);
+			transition: background-color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+			will-change: transform, background-color;
 			&>div {
-				transition: opacity 0.3s linear, font-size 0.3s ease;
+				transform-origin: left center;
+				transition: opacity 0.18s ease, transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+				will-change: transform, opacity;
 			}
 			.small {
-				font-size: 0.7em;
+				transform: translate3d(0, 0, 0) scale(0.72);
 				opacity: 0.7;
 			}
 		}

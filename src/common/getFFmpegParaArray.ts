@@ -6,8 +6,9 @@ import { getAudioFFmpegParam } from './params/acodecs';
 import { OutputParams } from '@common/types';
 import { randomString } from './utils';
 import { getMenuItemByValue } from './menu';
+import { getPathBaseName, getPathDirName } from './filePath';
 
-const { trimExt, dirname, basename } = path;
+const { trimExt } = path;
 
 /**
  * 获取命令行参数
@@ -20,8 +21,8 @@ export function getFFmpegParaArray(params: { outputParams: OutputParams, withQuo
 	let { outputParams, withQuotes, inputDir, outputFileName, outputDir, overrideFilePaths } = params;
 
 	const inputFilePath = outputParams.input.files[0]?.filePath;	// 暂时以第一个输入文件定目录
-	outputFileName = outputFileName || trimExt(basename(inputFilePath || '[输出文件名]'));	// 暂时以第一个输入文件的 fileName 定义输出文件名
-	outputDir = outputDir || dirname(inputFilePath || '[输出目录]');
+	outputFileName = outputFileName || trimExt(getPathBaseName(inputFilePath || '[输出文件名]'));	// 暂时以第一个输入文件的 fileName 定义输出文件名
+	outputDir = outputDir || getPathDirName(inputFilePath || '[输出目录]');
 	
 	ret.push('-hide_banner');
 	ret.push(...getInputFFmpegParam(outputParams.input, withQuotes, inputDir));
@@ -77,8 +78,8 @@ export function getFFmpegParaArray(params: { outputParams: OutputParams, withQuo
 export function genTaskOutputFiles(outputParams: OutputParams, remoteDownloadDir?: string): string[] {
 	// 本地任务：取第一个输入文件路径作为输出 basename（若没有输入文件则使用占位符）
 	const inputFilePath = outputParams.input.files[0]?.filePath || '[输出文件名]';
-	let localOutputDir = dirname(inputFilePath || '[输出目录]');
-    let localOutputFileName = trimExt(basename(inputFilePath));
+	let localOutputDir = getPathDirName(inputFilePath || '[输出目录]');
+    let localOutputFileName = trimExt(getPathBaseName(inputFilePath));
 
     return outputParams.outputs.map((output) => {
         let extension = '';

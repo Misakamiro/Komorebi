@@ -8,7 +8,7 @@ const windowInstances = new WeakMap<BrowserWindow, BlurWindowManager>();
 class BlurWindowManager {
     private window: BrowserWindow;
     private on = false;
-    private marginTimer = 0;
+    private marginTimer: NodeJS.Timeout | null = null;
 
     constructor(window: BrowserWindow) {
         this.window = window;
@@ -38,16 +38,22 @@ class BlurWindowManager {
         osBridge.setBlurBehindWindow(this.window, 1);
         if (this.marginTimer) {
             clearInterval(this.marginTimer);
-            this.marginTimer = 0;
+            this.marginTimer = null;
         }
+        let retryCount = 0;
         this.marginTimer = setInterval(() => {
             try {
                osBridge.setBlurBehindWindow(this.window, 2);
+               retryCount++;
+               if (retryCount >= 10) {
+                    clearInterval(this.marginTimer!);
+                    this.marginTimer = null;
+               }
             } catch (error) {
                 clearInterval(this.marginTimer);
                 this.marginTimer = null;
             }
-        }, 40) as any;
+        }, 120);
         setTimeout(() => {
             this.window.hide();
             this.window.show();
@@ -62,7 +68,7 @@ class BlurWindowManager {
         osBridge.setBlurBehindWindow(this.window, 0);
         if (this.marginTimer) {
             clearInterval(this.marginTimer);
-            this.marginTimer = 0;
+            this.marginTimer = null;
         }
         setTimeout(() => {
             this.window.hide();

@@ -6,6 +6,7 @@ import { version } from '@common/constants';
 import { Server } from '@renderer/types';
 import { defaultParams } from "@common/defaultParams";
 import { buildKomorebiAudioParams, buildKomorebiRemuxParams, buildKomorebiVideoParams, defaultKomorebiAudioPreset, defaultKomorebiRemuxPreset, defaultKomorebiVideoPreset, KomorebiAudioPreset, KomorebiMode, KomorebiRemuxPreset, KomorebiVideoPreset, KomorebiWorkflow, normalizeKomorebiVideoPreset } from '@common/komorebiPresets';
+import { getPathBaseName, normalizeFilesystemPathForKomorebi } from '@common/filePath';
 import { ServiceBridge, ServiceBridgeStatus } from '@renderer/bridges/serviceBridge'
 import { LanguageCode, setLanguage } from '@common/i11n/i11n';
 import { randomString, replaceOutputParams } from '@common/utils';
@@ -15,7 +16,7 @@ import { allAcodecs, builtInAcodecs } from '@common/params/acodecs';
 import { allMuxers, builtInMuxers } from '@common/params/formats';
 import path from '@common/path';
 import { parseFFmpegCodecsToCodecsList, parseFFmpegFiltersToFiltersList, parseFFmpegMuDeMuxersToList } from '@common/params/parser';
-import { handleCmdUpdate, handleFFmpegInfo, handleProgressUpdate, handleTasklistUpdate, handleNotificationUpdate, handleTaskUpdate, handleWorkingStatusUpdate } from '@renderer/logic/eventsHandler';
+import { clearServerRuntimeTimers, handleCmdUpdate, handleFFmpegInfo, handleProgressUpdate, handleTasklistUpdate, handleNotificationUpdate, handleTaskUpdate, handleWorkingStatusUpdate } from '@renderer/logic/eventsHandler';
 import nodeBridge from '@renderer/bridges/nodeBridge';
 import { addUploadTask } from '../logic/transferManager2';
 import { getLimitaion } from '../logic/limitaions';
@@ -196,10 +197,10 @@ export const useAppStore = defineStore('app', {
 							if (needStopCuzLimit) {
 								return;
 							}
-							const fileBaseName = typeof input === 'string' ? path.parse(input.replaceAll('\\', '/')).base : input.name;
+							const fileBaseName = typeof input === 'string' ? getPathBaseName(input) : input.name;
 							const fileType = typeof input === 'string' ? (await nodeBridge.getPathsCategorized(input)).lineResults?.[0] : 'lf';
 							const needUpload = fileType === 'lf' && isRemoteService;	// 缃戦〉鐗堝繀瀹氭槸 remoteService锛涘鏋滄嫋鍏ョ殑鏄枃浠惰€屼笉鏄瓧绗︿覆閭ｄ箞蹇呭畾鏄?lf锛堜互鍚庡啀鏀寔鏂囦欢澶规嫋鍏ワ級
-							// console.log('娣诲姞浠诲姟', input, fileType);
+							// console.log('添加任务', input, fileType);
 							if (needUpload) {
 								const limitedFileSizeGB = getLimitaion('maxUploadSizeGB');
 								const fileSize = typeof input === 'string' ? (await nodeBridge.getLocalFileStats(input)).size : input.size;
@@ -237,19 +238,19 @@ export const useAppStore = defineStore('app', {
 					 * 杩滅▼锛氬瓧绗︿覆鍒ゆ柇鏄枃浠讹紙闈炴枃浠跺す锛夊悗鐢熸垚 inputName 鍗犱綅绗﹀悗涓婁紶锛屾枃浠剁洿鎺ヤ笂浼狅紙涓㈡枃浠跺す浼氬け璐ワ級
 					 */
 					// 鍏堟坊鍔犲崰浣嶇浠诲姟锛岀劧鍚庢鏌ヤ笂浼?
-					const firstFileBaseName = typeof inputList[0] === 'string' ? path.parse(inputList[0])?.name : inputList[0]?.name;
+					const firstFileBaseName = typeof inputList[0] === 'string' ? trimExt(getPathBaseName(inputList[0])) : inputList[0]?.name;
 					const taskId = await 这.addTask(
-						firstFileBaseName ? trimExt(firstFileBaseName) : `鏂颁换鍔?${new Date().toISOString()}`,
+						firstFileBaseName ? trimExt(firstFileBaseName) : `新任务 ${new Date().toISOString()}`,
 						[]
 					);
 					newlyAddedTaskIds.push(Promise.resolve(taskId));
 
 					const inputPaths: string[] = [];
 					for (const input of inputList) {
-						const fileBaseName = typeof input === 'string' ? path.parse(input.replaceAll('\\', '/')).base : input.name;
+						const fileBaseName = typeof input === 'string' ? getPathBaseName(input) : input.name;
 						const fileType = typeof input === 'string' ? (await nodeBridge.getPathsCategorized(input)).lineResults?.[0] : 'lf';
 						const needUpload = fileType === 'lf' && isRemoteService;	// 缃戦〉鐗堝繀瀹氭槸 remoteService锛涘鏋滄嫋鍏ョ殑鏄枃浠惰€屼笉鏄瓧绗︿覆閭ｄ箞蹇呭畾鏄?lf锛堜互鍚庡啀鏀寔鏂囦欢澶规嫋鍏ワ級
-						// console.log('娣诲姞浠诲姟', input, fileType);
+						// console.log('添加任务', input, fileType);
 						if (needUpload) {
 							const limitedFileSizeGB = getLimitaion('maxUploadSizeGB');
 							const fileSize = typeof input === 'string' ? (await nodeBridge.getLocalFileStats(input)).size : input.size;
@@ -280,11 +281,11 @@ export const useAppStore = defineStore('app', {
 						...params,
 						input: {
 							files: inputPaths.map((path, index) => ({
-								filePath: path.replace(/\\/g, '/'),
-								demuxer: params.input.files[index]?.demuxer ?? '鑷姩',
+								filePath: normalizeFilesystemPathForKomorebi(path),
+								demuxer: params.input.files[index]?.demuxer ?? '自动',
 								begin: params.input.files[index]?.begin ?? '',
 								end: params.input.files[index]?.end ?? '',
-								hwaccel: params.input.files[index]?.hwaccel ?? '鑷姩',
+								hwaccel: params.input.files[index]?.hwaccel ?? '自动',
 								realtime: params.input.files[index]?.realtime ?? false,
 								detail: params.input.files[index]?.detail ?? {},
 								custom: params.input.files[index]?.custom ?? '',
@@ -307,11 +308,11 @@ export const useAppStore = defineStore('app', {
 			}
 			const params: OutputParams = JSON.parse(JSON.stringify(这.buildKomorebiParamsForInputs(paths) || 这.globalParams));
 			params.input.files = paths.map((path, index) => ({
-				filePath: path ? path.replace(/\\/g, '/') : undefined,
-				demuxer: params.input.files[index]?.demuxer ?? '鑷姩',
+				filePath: normalizeFilesystemPathForKomorebi(path),
+				demuxer: params.input.files[index]?.demuxer ?? '自动',
 				begin: params.input.files[index]?.begin ?? '',
 				end: params.input.files[index]?.end ?? '',
-				hwaccel: params.input.files[index]?.hwaccel ?? '鑷姩',
+				hwaccel: params.input.files[index]?.hwaccel ?? '自动',
 				realtime: params.input.files[index]?.realtime ?? false,
 				detail: params.input.files[index]?.detail ?? {},
 				custom: params.input.files[index]?.custom ?? '',
@@ -652,11 +653,11 @@ export const useAppStore = defineStore('app', {
 					}
 					if (parameter.mode === 'combo') {
 						const defaultValue = parameter.default ?? parameter.items[0].value;
-						console.log(`鍙傛暟 ${parameter.parameter} 閲嶇疆涓洪粯璁ゅ€兼垨棣栭」锛?{defaultValue}`);
+						console.log(`参数 ${parameter.parameter} 重置为默认值或首项：${defaultValue}`);
 						v.detail[parameter.parameter] = defaultValue;
 					} else if (parameter.mode == 'slider') {
 						const defaultValue = parameter.default ?? ((parameter.max ?? 1) + (parameter.min ?? 0)) / 2;
-						console.log(`鍙傛暟 ${parameter.parameter} 閲嶇疆涓洪粯璁ゅ€兼垨涓棿鍊硷細${defaultValue}`);	// 鍋囧畾鎵€鏈?string 绫荤殑 slider 閮藉繀椤诲畾涔?default
+						console.log(`参数 ${parameter.parameter} 重置为默认值或中间值：${defaultValue}`);
 						v.detail[parameter.parameter] = defaultValue;
 					}
 				}
@@ -670,11 +671,11 @@ export const useAppStore = defineStore('app', {
 					}
 					if (parameter.mode === 'combo') {
 						const defaultValue = parameter.default ?? parameter.items[0].value;
-						console.log(`鍙傛暟 ${parameter.parameter} 閲嶇疆涓洪粯璁ゅ€兼垨棣栭」锛?{defaultValue}`);
+						console.log(`参数 ${parameter.parameter} 重置为默认值或首项：${defaultValue}`);
 						a.detail[parameter.parameter] = defaultValue;
 					} else if (parameter.mode == 'slider') {
 						const defaultValue = parameter.default ?? ((parameter.max ?? 1) + (parameter.min ?? 0)) / 2;
-						console.log(`鍙傛暟 ${parameter.parameter} 閲嶇疆涓洪粯璁ゅ€兼垨涓棿鍊硷細${defaultValue}`);	// 鍋囧畾鎵€鏈?string 绫荤殑 slider 閮藉繀椤诲畾涔?default
+						console.log(`参数 ${parameter.parameter} 重置为默认值或中间值：${defaultValue}`);
 						a.detail[parameter.parameter] = defaultValue;
 					}
 				}
@@ -688,11 +689,11 @@ export const useAppStore = defineStore('app', {
 					}
 					if (parameter.mode === 'combo') {
 						const defaultValue = parameter.default ?? parameter.items[0].value;
-						console.log(`鍙傛暟 ${parameter.parameter} 閲嶇疆涓洪粯璁ゅ€兼垨棣栭」锛?{defaultValue}`);
+						console.log(`参数 ${parameter.parameter} 重置为默认值或首项：${defaultValue}`);
 						m.detail[parameter.parameter] = defaultValue;
 					} else if (parameter.mode == 'slider') {
 						const defaultValue = parameter.default ?? ((parameter.max ?? 1) + (parameter.min ?? 0)) / 2;
-						console.log(`鍙傛暟 ${parameter.parameter} 閲嶇疆涓洪粯璁ゅ€兼垨涓棿鍊硷細${defaultValue}`);	// 鍋囧畾鎵€鏈?string 绫荤殑 slider 閮藉繀椤诲畾涔?default
+						console.log(`参数 ${parameter.parameter} 重置为默认值或中间值：${defaultValue}`);
 						m.detail[parameter.parameter] = defaultValue;
 					}
 				}
@@ -778,7 +779,8 @@ export const useAppStore = defineStore('app', {
 		async loadPreset(name: string) {
 			const 这 = useAppStore();
 			const secureName = name.replaceAll('.', '_');
-			if (secureName === '榛樿閰嶇疆') {
+			const legacyMojibakeDefaultName = String.fromCharCode(27035, 27199, 57723, 38320, 23943, 30086);
+			if (secureName === '默认配置' || secureName === legacyMojibakeDefaultName) {
 				这.globalParams = JSON.parse(JSON.stringify(defaultParams));
 				这.presetName = secureName;
 				这.checkAndApplyCodecDefaults({ video: true, audio: true });
@@ -950,6 +952,7 @@ export const useAppStore = defineStore('app', {
 			const 这 = useAppStore();
 			const index = 这.servers.findIndex((server) => server.data.id === serverId);
 			if (index > -1) {
+				clearServerRuntimeTimers(这.servers[index].data);
 				这.servers.splice(index, 1);
 			}
 			if (这.currentServerId === serverId) {
@@ -966,9 +969,10 @@ export const useAppStore = defineStore('app', {
 				return Promise.reject();
 			}
 			const _port = port ?? 33269;
-			console.log('鍒濆鍖栨湇鍔″櫒杩炴帴', server.data);
+			console.log('初始化服务器连接', server.data);
 
 			const destroy = () => {
+				clearServerRuntimeTimers(server.data);
 				for (const eventName of ['connected', 'disconnected', 'error', 'ffmpegInfo', 'workingStatusUpdate', 'tasklistUpdate', 'taskUpdate', 'cmdUpdate', 'progressUpdate', 'taskNotification'] as any[]) {
 					entity.removeAllListeners(eventName);
 				}
@@ -998,16 +1002,19 @@ export const useAppStore = defineStore('app', {
 					destroy();
 				});
 				entity.on('error', (reason) => {
-					if (!retryCount || reason.includes('杩炴帴澶辫触')) {
-						console.log(`鏈嶅姟鍣?${server.entity.ip} ${reason}`);
-						这.pushMsg(`鏈嶅姟鍣?${server.data.name} ${reason}`, NotificationLevel.error);
-						destroy();
-						reject(reason);
-					} else {
-						console.log(`鏈嶅姟鍣?${server.entity.ip} ${reason}锛屽墿浣欓噸璇曟鏁?${retryCount}`);
+					destroy();
+					const isConnectionError = reason.includes('连接失败') || reason.includes('连接超时') || reason.includes('连接已关闭') || reason.includes('WebSocket');
+					if (retryCount && isConnectionError) {
+						console.log(`服务器 ${server.entity.ip} ${reason}，剩余重试次数 ${retryCount}`);
 						setTimeout(() => {
-							这.initializeServer(serverId, ip, port, username, password, retryCount - 1);
-						}, 150);
+							这.initializeServer(serverId, ip, port, username, password, retryCount - 1)
+								.then(resolve)
+								.catch(reject);
+						}, 450);
+					} else {
+						console.log(`服务器 ${server.entity.ip} ${reason}`);
+						这.pushMsg(`服务器 ${server.data.name} ${reason}`, NotificationLevel.error);
+						reject(reason);
 					}
 				});
 	

@@ -6,6 +6,7 @@ import { log } from './utils';
 import { NotificationLevel } from '@common/types';
 
 let service: FFBoxService;
+let lastUncaughtNotice = 0;
 const helpText = `
 Options:
   -?, -h, --help        显示 Komorebi 服务帮助文档
@@ -16,6 +17,11 @@ Options:
 process.on('uncaughtException', (err) => {
 	log.error('发生未捕获异常，以下为错误信息');
 	console.error(err);
+	const now = Date.now();
+	if (now - lastUncaughtNotice <= 3000) {
+		return;
+	}
+	lastUncaughtNotice = now;
 	if (service) {
 		service.setNotification(-1, 'Komorebi 本地服务发生未捕获异常。', NotificationLevel.error);
 	}

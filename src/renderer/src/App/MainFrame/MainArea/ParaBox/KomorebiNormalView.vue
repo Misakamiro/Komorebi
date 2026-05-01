@@ -50,6 +50,7 @@ const videoInputInfo = computed<InputInfo | undefined>(() => {
 	const task = firstSelectedTask.value;
 	return task?.before?.find((input) => input.streams?.some(isVideoStream));
 });
+const firstTaskInputPath = computed(() => firstSelectedTask.value?.after?.input?.files?.find((file) => file.filePath && !file.filePath.startsWith('['))?.filePath);
 const mediaHints = computed(() => getKomorebiMediaHints(currentInputInfo.value));
 const hasKnownInput = computed(() => !!currentInputInfo.value?.streams?.length);
 const selectionHint = computed(() => {
@@ -146,7 +147,7 @@ const getRatioText = (sourceSize: number, outputSize: number, actual = false) =>
 
 const estimateVideoSize = computed(() => {
 	const input = videoInputInfo.value;
-	const sourceBytes = input ? actualSourceBytes.value || estimateSourceBytes(input) : undefined;
+	const sourceBytes = input ? input.size || actualSourceBytes.value || estimateSourceBytes(input) : undefined;
 	if (firstSelectedTask.value?.status === TaskStatus.finished && actualOutputBytes.value && sourceBytes) {
 		return tr.value.estimate.actualSummary(
 			formatSize(actualOutputBytes.value, appStore.frontendSettings.useIEC),
@@ -274,10 +275,15 @@ watch(remuxContainerOptions, (items) => {
 watch(ncmFormatOptions, (items) => {
 	appStore.komorebi.ncm.targetFormat = pickFirstEnabled(items, appStore.komorebi.ncm.targetFormat) as any;
 }, { immediate: true });
-watch(() => videoInputInfo.value?.path, async (path) => {
+watch(() => [videoInputInfo.value?.path, videoInputInfo.value?.size, firstTaskInputPath.value] as const, async ([metadataPath, metadataSize, taskInputPath]) => {
 	actualSourceBytes.value = undefined;
+	if (Number.isFinite(metadataSize) && metadataSize > 0) {
+		actualSourceBytes.value = metadataSize;
+		return;
+	}
+	const path = metadataPath || taskInputPath;
 	const size = await getLocalFileSize(path);
-	if (videoInputInfo.value?.path === path) {
+	if (videoInputInfo.value?.path === metadataPath && firstTaskInputPath.value === taskInputPath) {
 		actualSourceBytes.value = size;
 	}
 }, { immediate: true });
@@ -526,8 +532,9 @@ watch(
 		background: hwb(var(--bg99) / 0.78);
 		border: 1px solid hwb(var(--bg90) / 0.46);
 		box-shadow: 0 1px 4px hwb(var(--hoverShadow) / 0.08);
-		animation: panelSettle 0.22s cubic-bezier(0.2, 0.9, 0.2, 1);
+		animation: panelSettle 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 		transform-origin: top center;
+		will-change: transform, opacity;
 	}
 	.grid {
 		display: grid;
@@ -539,8 +546,9 @@ watch(
 		flex-direction: column;
 		gap: 6px;
 		font-size: 13px;
-		animation: fieldSettle 0.22s cubic-bezier(0.2, 0.9, 0.2, 1) both;
-		transition: opacity 0.16s ease, transform 0.16s ease;
+		animation: fieldSettle 0.18s cubic-bezier(0.16, 1, 0.3, 1) both;
+		transition: opacity 0.14s ease, transform 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+		will-change: transform, opacity;
 		&:nth-child(2) { animation-delay: 0.015s; }
 		&:nth-child(3) { animation-delay: 0.03s; }
 		&:nth-child(4) { animation-delay: 0.045s; }
@@ -568,8 +576,8 @@ watch(
 		color: var(--33);
 		outline: none;
 		box-shadow: 0 1px 2px hwb(var(--hoverShadow) / 0.05);
-		transition: border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease, transform 0.16s cubic-bezier(0.2, 0.9, 0.2, 1), opacity 0.16s ease;
-		will-change: transform, border-color, box-shadow;
+		transition: border-color 0.14s ease, box-shadow 0.14s ease, background 0.14s ease, transform 0.16s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.14s ease;
+		will-change: transform;
 		&:hover {
 			border-color: hwb(var(--primaryColor) / 0.28);
 			transform: translateY(-1px);
@@ -601,8 +609,8 @@ watch(
 			border-radius: 6px;
 			background: hwb(var(--primaryColor) / 0.08);
 			color: hwb(var(--primaryColor));
-			transition: background 0.16s ease, transform 0.16s cubic-bezier(0.2, 0.9, 0.2, 1), box-shadow 0.16s ease, opacity 0.16s ease;
-			will-change: transform, background;
+			transition: background 0.14s ease, transform 0.16s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.14s ease, opacity 0.14s ease;
+			will-change: transform;
 			&:hover:not(:disabled) {
 				background: hwb(var(--primaryColor) / 0.13);
 				box-shadow: 0 5px 12px hwb(var(--primaryColor) / 0.12);
@@ -676,8 +684,8 @@ watch(
 		padding: 0 18px;
 		border-radius: 8px;
 		font-size: 14px;
-		transition: background 0.16s ease, transform 0.16s cubic-bezier(0.2, 0.9, 0.2, 1), box-shadow 0.16s ease, opacity 0.16s ease;
-		will-change: transform, background;
+		transition: background 0.14s ease, transform 0.16s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.14s ease, opacity 0.14s ease;
+		will-change: transform;
 		&:hover:not(:disabled) {
 			transform: translateY(-1px);
 		}
@@ -705,7 +713,7 @@ watch(
 	.hintPulse-leave-active,
 	.estimatePulse-enter-active,
 	.estimatePulse-leave-active {
-		transition: opacity 0.14s ease, transform 0.18s cubic-bezier(0.2, 0.9, 0.2, 1);
+		transition: opacity 0.12s ease, transform 0.16s cubic-bezier(0.16, 1, 0.3, 1);
 	}
 	.hintPulse-enter-from,
 	.hintPulse-leave-to,

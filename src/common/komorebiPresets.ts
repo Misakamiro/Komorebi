@@ -1,4 +1,5 @@
 import { defaultParams } from './defaultParams';
+import { joinPathPreserveUnc, normalizeDirectoryPathForKomorebi, normalizeFilesystemPathForKomorebi, stripOuterQuotes } from './filePath';
 import { InputInfo, NcmTaskParams, OutputParams } from './types';
 
 export type KomorebiWorkflow = 'video-compress' | 'audio-convert' | 'remux' | 'ncm';
@@ -120,38 +121,16 @@ const sceneParams = {
 
 const cloneDefaultParams = (): OutputParams => JSON.parse(JSON.stringify(defaultParams));
 
-const stripOuterQuotes = (value?: string) => {
-	let normalized = (value || '').trim();
-	while (
-		normalized.length >= 2 &&
-		((normalized.startsWith('"') && normalized.endsWith('"')) ||
-			(normalized.startsWith("'") && normalized.endsWith("'")))
-	) {
-		normalized = normalized.slice(1, -1).trim();
-	}
-	return normalized;
-};
-
-const normalizePath = (path?: string) => stripOuterQuotes(path).replace(/\\/g, '/');
-
-const normalizeDirectoryPath = (path?: string) => {
-	let normalized = normalizePath(path);
-	while (normalized.endsWith('/') && normalized !== '/' && !/^[A-Za-z]:\/$/.test(normalized)) {
-		normalized = normalized.slice(0, -1);
-	}
-	return normalized;
-};
-
 const outputPattern = (outputDir: string | undefined, suffix: string, fileNameTemplate?: string) => {
-	const normalized = normalizeDirectoryPath(outputDir);
+	const normalized = normalizeDirectoryPathForKomorebi(outputDir);
 	const safeTemplate = stripOuterQuotes(fileNameTemplate).replace(/[\\/]/g, '_').trim();
 	const filename = safeTemplate || `[filename]_${suffix}`;
 	const filenameWithExt = filename.includes('[fileext]') ? filename : `${filename}.[fileext]`;
-	return normalized ? `${normalized}/${filenameWithExt}` : `[filedir]/${filenameWithExt}`;
+	return normalized ? joinPathPreserveUnc(normalized, filenameWithExt) : `[filedir]/${filenameWithExt}`;
 };
 
 const inputFiles = (inputs: string[]) => inputs.filter(Boolean).map((filePath) => ({
-	filePath: normalizePath(filePath),
+	filePath: normalizeFilesystemPathForKomorebi(filePath),
 	demuxer: '自动',
 	begin: '',
 	end: '',
@@ -316,7 +295,7 @@ export function buildKomorebiVideoParams(inputs: string[], preset: KomorebiVideo
 	params.extra = {
 		presetName: 'Komorebi 视频压缩',
 		komorebiWorkflow: 'video-compress',
-		komorebiPreset: { ...actualPreset, outputDir: normalizeDirectoryPath(actualPreset.outputDir), outputNameTemplate: stripOuterQuotes(actualPreset.outputNameTemplate) },
+		komorebiPreset: { ...actualPreset, outputDir: normalizeDirectoryPathForKomorebi(actualPreset.outputDir), outputNameTemplate: stripOuterQuotes(actualPreset.outputNameTemplate) },
 		komorebiCpuFallback: true,
 	};
 	return params;
@@ -372,7 +351,7 @@ export function buildKomorebiAudioParams(inputs: string[], preset: KomorebiAudio
 	params.extra = {
 		presetName: 'Komorebi 音频转换',
 		komorebiWorkflow: 'audio-convert',
-		komorebiPreset: { ...preset, outputDir: normalizeDirectoryPath(preset.outputDir), outputNameTemplate: stripOuterQuotes(preset.outputNameTemplate) },
+		komorebiPreset: { ...preset, outputDir: normalizeDirectoryPathForKomorebi(preset.outputDir), outputNameTemplate: stripOuterQuotes(preset.outputNameTemplate) },
 	};
 	return params;
 }
@@ -408,7 +387,7 @@ export function buildKomorebiRemuxParams(inputs: string[], preset: KomorebiRemux
 	params.extra = {
 		presetName: 'Komorebi 转封装',
 		komorebiWorkflow: 'remux',
-		komorebiPreset: { ...preset, outputDir: normalizeDirectoryPath(preset.outputDir), outputNameTemplate: stripOuterQuotes(preset.outputNameTemplate) },
+		komorebiPreset: { ...preset, outputDir: normalizeDirectoryPathForKomorebi(preset.outputDir), outputNameTemplate: stripOuterQuotes(preset.outputNameTemplate) },
 		komorebiRemuxFallback: true,
 	};
 	return params;
@@ -634,7 +613,7 @@ export function buildKomorebiFFmpegArgs(outputParams: OutputParams, outputFile: 
 		return undefined;
 	}
 
-	const inputs = outputParams.input.files.map((file) => normalizePath(file.filePath)).filter(Boolean);
+	const inputs = outputParams.input.files.map((file) => normalizeFilesystemPathForKomorebi(file.filePath)).filter(Boolean);
 	const args = ['-hide_banner'];
 	const inputArgs = (paths: string[]) => paths.forEach((filePath) => args.push('-i', filePath));
 
@@ -721,7 +700,7 @@ export function buildKomorebiFFmpegArgs(outputParams: OutputParams, outputFile: 
 
 export function buildNcmDumpArgs(params: NcmTaskParams): string[] {
 	const args: string[] = [];
-	const inputs = params.inputs.map((input) => normalizePath(input)).filter(Boolean);
+	const inputs = params.inputs.map((input) => normalizeFilesystemPathForKomorebi(input)).filter(Boolean);
 	const firstDir = inputs.length === 1 && !inputs[0].toLowerCase().endsWith('.ncm');
 	if (firstDir) {
 		args.push('-d', inputs[0]);
@@ -731,7 +710,7 @@ export function buildNcmDumpArgs(params: NcmTaskParams): string[] {
 	} else {
 		args.push(...inputs);
 	}
-	const outputDir = normalizeDirectoryPath(params.outputDir);
+	const outputDir = normalizeDirectoryPathForKomorebi(params.outputDir);
 	if (outputDir) {
 		args.push('-o', outputDir);
 	}

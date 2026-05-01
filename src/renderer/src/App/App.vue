@@ -16,6 +16,8 @@ const appStore = useAppStore();
 let colorSchemeMediaQuery: MediaQueryList | undefined;
 let colorSchemeListener: (() => void) | undefined;
 
+const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 onMounted(async () => {
 	colorSchemeMediaQuery = window.matchMedia?.('(prefers-color-scheme: dark)');
 	colorSchemeListener = () => {
@@ -37,8 +39,20 @@ onMounted(async () => {
 		// electron 环境自动连接 localhost
 		if (location.href.startsWith('file')) {
 			// 打包后的 electron 环境首先启动 service 再连接
-			nodeBridge.startService().finally(() => {
-				appStore.initializeServer(firstServerId, 'localhost', 33269, '', '', 3); // 4 次连接机会
+			let servicePort = 33269;
+			Promise.race([
+				nodeBridge.startService().then((port) => {
+					if (Number.isFinite(port)) {
+						servicePort = port;
+					}
+				}).catch((error) => {
+					console.warn('Start local service failed', error);
+				}),
+				wait(5000),
+			]).finally(() => {
+				appStore.initializeServer(firstServerId, 'localhost', servicePort, '', '', 10).catch((error) => {
+					console.warn('Initialize local server failed', error);
+				});
 			});
 		} else {
 			appStore.initializeServer(firstServerId, 'localhost', 33269, '', '');

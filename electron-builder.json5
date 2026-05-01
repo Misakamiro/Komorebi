@@ -48,10 +48,6 @@
         "to": "ffmpeg.exe",
       },
       {
-        "from": "tools/ffprobe.exe",
-        "to": "ffprobe.exe",
-      },
-      {
         "from": "tools/LICENSE-ffmpeg.txt",
         "to": "LICENSE-ffmpeg.txt",
       },
