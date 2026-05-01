@@ -8,7 +8,8 @@ import { getLimitaion } from './limitaions';
 import Popup from '@renderer/components/Popup/Popup';
 import Msgbox from '@renderer/components/Msgbox/Msgbox';
 import { ButtonType } from '@renderer/components/Button/Button';
-import ImageExitConfirm from '@renderer/assets/cartoons/exitConfirm.svg';
+import ImageExitConfirm from '@renderer/assets/komorebi-guides/exit-confirm.png';
+import i11n from '@common/i11n/i11n';
 
 // #region server events
 
@@ -215,15 +216,16 @@ export function handleCloseConfirm() {
 	} else {
 		let queueTaskCount = getQueueTaskCount(localServer as any);
 		if (queueTaskCount > 0) {
+			const exitContent = i11n.frontend.dialogs.exitContent(queueTaskCount).split('\n');
 			Msgbox({
 				container: document.body,
 				// container: containerRef.value,
-				image: <ImageExitConfirm />,
-				title: '要退出吗？',
-				content: <>本地服务器还有 {queueTaskCount} 个任务未完成<br />如果 FFBox 服务器是由客户端启动的，退出将会强制停止任务哦～</>,
+				image: <img src={ImageExitConfirm} alt="" />,
+				title: i11n.frontend.dialogs.exitTitle,
+				content: <>{exitContent.map((line, index) => <>{index > 0 && <br />}{line}</>)}</>,
 				buttons: [
-					{ text: '退退退', callback: readyToClose, type: ButtonType.Danger, role: 'confirm' },
-					{ text: '再等等', role: 'cancel' },
+					{ text: i11n.frontend.dialogs.exitConfirm, callback: readyToClose, type: ButtonType.Danger, role: 'confirm' },
+					{ text: i11n.frontend.dialogs.exitCancel, role: 'cancel' },
 				]
 			})
 		} else {

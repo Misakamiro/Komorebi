@@ -124,6 +124,9 @@ export const TaskItem = defineComponent((props: Props) => {
 	// #region 仪表盘
 
 	const graphBitrateFilter = (kbps: number) => {
+		if (!Number.isFinite(kbps) || kbps <= 0) {
+			return '-';
+		}
 		const bps = kbps * 1000;
 		if (window.frontendSettings.useIEC) {
 			if (bps >= 10 * 1024 ** 2) {
@@ -141,6 +144,9 @@ export const TaskItem = defineComponent((props: Props) => {
 	};
 	const graphBitrate = computed(() => graphBitrateFilter(props.task.dashboard_smooth.bitrate));
 	const speedFilter = (value: number) => {
+		if (!Number.isFinite(value) || value <= 0) {
+			return '-';
+		}
 		if (value < 10) {
 			return value.toFixed(2) + ' ×';
 		} else {
@@ -164,7 +170,7 @@ export const TaskItem = defineComponent((props: Props) => {
 	const graphTime = computed(() => timeFilter(props.task.dashboard_smooth.time));
 	const graphLeftTime = computed(() => {
 		const totalDuration = outputDuration.value;
-		if (props.task.dashboard_smooth.speed > 0) {
+		if (Number.isFinite(totalDuration) && totalDuration > 0 && props.task.dashboard_smooth.speed > 0) {
 			const needTime = totalDuration / props.task.dashboard_smooth.speed;
 			const remainTime = (totalDuration - props.task.dashboard_smooth.time) / totalDuration * needTime;	// 剩余进度比例 * 全进度耗时
 			return timeFilter(remainTime, false);
@@ -181,19 +187,23 @@ export const TaskItem = defineComponent((props: Props) => {
 	 *  　　　或：(log(数值 / 想要以多少作为最低值) / log(底，即每增长多少倍数为一格)) / 格数
 	 */
 	const graphBitrateStyle = computed(() => {
-		let value = Math.log(props.task.dashboard_smooth.bitrate / 62.5) / Math.log(8) / 4;		// 62.5K, 500K, 4M, 32M, 256M
+		let value = props.task.dashboard_smooth.bitrate > 0 ? Math.log(props.task.dashboard_smooth.bitrate / 62.5) / Math.log(8) / 4 : 0;		// 62.5K, 500K, 4M, 32M, 256M
+		value = Number.isFinite(value) ? value : 0;
 		value = Math.min(Math.max(value, 0), 1);
 		return `background: conic-gradient(hwb(var(--primaryColor)) 0%, hwb(var(--primaryColor)) ${value * 75}%, hwb(var(--opposite80) / 0.1) ${value * 75}%, hwb(var(--opposite80) / 0.1) 75%, transparent 75%)`;
 	});
 	const graphSpeedStyle = computed(() => {
-		let value = Math.log(props.task.dashboard_smooth.speed / 0.04) / Math.log(5) / 6;			// 0.04, 0.2, 1, 5, 25, 125, 625
+		let value = props.task.dashboard_smooth.speed > 0 ? Math.log(props.task.dashboard_smooth.speed / 0.04) / Math.log(5) / 6 : 0;			// 0.04, 0.2, 1, 5, 25, 125, 625
+		value = Number.isFinite(value) ? value : 0;
 		value = Math.min(Math.max(value, 0), 1);
 		return `background: conic-gradient(hwb(var(--primaryColor)) 0%, hwb(var(--primaryColor)) ${value * 75}%, hwb(var(--opposite80) / 0.1) ${value * 75}%, hwb(var(--opposite80) / 0.1) 75%, transparent 75%)`;
 	});
 
 	const overallProgress = computed(() => uploadStatus.value !== 'fine'
-		? (transferInfo.value.totalRead * 0.1 + transferInfo.value.totalHash * 0.1 + transferInfo.value.totalUpload * 0.8) / transferInfo.value.totalSize
-		: props.task.dashboard_smooth.progress
+		? (transferInfo.value.totalSize > 0
+			? (transferInfo.value.totalRead * 0.1 + transferInfo.value.totalHash * 0.1 + transferInfo.value.totalUpload * 0.8) / transferInfo.value.totalSize
+			: 0)
+		: (Number.isFinite(props.task.dashboard_smooth.progress) ? props.task.dashboard_smooth.progress : 0)
 	);
 	// const overallProgress = { value: 0.99 };
 	const overallProgressDescription = computed(() => uploadStatus.value !== 'fine' ? '上传进度' : '转码进度');
@@ -264,8 +274,12 @@ export const TaskItem = defineComponent((props: Props) => {
 	});
 
 	const taskBackgroundProgressStyle = computed(() => {
-		const taskProgress = (props.task.dashboard_smooth.progress) * 100 + '%';
-		const transferProgress = ((transferInfo.value.totalRead * 0.1 + transferInfo.value.totalHash * 0.1 + transferInfo.value.totalUpload * 0.8) / transferInfo.value.totalSize) * 100 + '%';
+		const safeProgress = Math.min(Math.max(Number.isFinite(props.task.dashboard_smooth.progress) ? props.task.dashboard_smooth.progress : 0, 0), 1);
+		const safeTransferProgress = transferInfo.value.totalSize > 0
+			? Math.min(Math.max((transferInfo.value.totalRead * 0.1 + transferInfo.value.totalHash * 0.1 + transferInfo.value.totalUpload * 0.8) / transferInfo.value.totalSize, 0), 1)
+			: 0;
+		const taskProgress = safeProgress * 100 + '%';
+		const transferProgress = safeTransferProgress * 100 + '%';
 		return {
 			green: { width: taskProgress, opacity: [TaskStatus.running, TaskStatus.finishing].includes(props.task.status) ? 1 : 0},
 			yellow: { width: taskProgress, opacity: [TaskStatus.paused, TaskStatus.paused_queued, TaskStatus.stopping].includes(props.task.status) ? 1 : 0},

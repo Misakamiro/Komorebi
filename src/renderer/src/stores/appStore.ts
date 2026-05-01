@@ -7,6 +7,7 @@ import { Server } from '@renderer/types';
 import { defaultParams } from "@common/defaultParams";
 import { buildKomorebiAudioParams, buildKomorebiRemuxParams, buildKomorebiVideoParams, defaultKomorebiAudioPreset, defaultKomorebiRemuxPreset, defaultKomorebiVideoPreset, KomorebiAudioPreset, KomorebiMode, KomorebiRemuxPreset, KomorebiVideoPreset, KomorebiWorkflow, normalizeKomorebiVideoPreset } from '@common/komorebiPresets';
 import { ServiceBridge, ServiceBridgeStatus } from '@renderer/bridges/serviceBridge'
+import { LanguageCode, setLanguage } from '@common/i11n/i11n';
 import { randomString, replaceOutputParams } from '@common/utils';
 import { getMenuItemByValue } from '@common/menu';
 import { allVcodecs, builtInVcodecs } from '@common/params/vcodecs';
@@ -31,7 +32,7 @@ interface StoreState {
 	showMenuCenter: 0 | 1 | 2; // 0锛氬叧闂€€1锛氬紑鍚彍鍗曟爮銆€2锛氬叏寮€
 	showInfoCenter: boolean;
 	showTransferCenter: boolean;
-	showTaskInfo: [number, 0 | 1 | 2, params?: any] | undefined;
+	showTaskInfo: [taskId: number, tab: 0 | 1 | 2, params?: any] | undefined;
 	showDragFilesOverlay: boolean;
 	paraSelected: number,
 	komorebiMode: KomorebiMode;
@@ -58,7 +59,9 @@ interface StoreState {
 	},
 	frontendSettings: {
 		// 鎵€鏈夊€奸兘鏄繀闇€棰勭疆榛樿鍊肩殑锛岃繖鏍峰湪鍒濆鍖栨椂浼氭妸娌℃湁淇濆瓨杩囩殑璁剧疆瀛樹竴閬?		colorTheme: string,
+		colorTheme: string,
 		colorThemeMode: 'light' | 'dark' | 'system',
+		language: LanguageCode,
 		useIEC: boolean,
 		useVirtualTaskList: boolean,
 	},
@@ -127,6 +130,7 @@ export const useAppStore = defineStore('app', {
 			frontendSettings: {
 				colorTheme: 'themeLight',
 				colorThemeMode: 'system',
+				language: 'zh-CN',
 				useIEC: false,
 				useVirtualTaskList: true,
 			},
@@ -1099,12 +1103,14 @@ export const useAppStore = defineStore('app', {
 			}
 
 			这.frontendSettings.colorThemeMode = themeMode;
+			这.frontendSettings.language = setLanguage(这.frontendSettings.language);
 			这.frontendSettings.colorTheme = effectiveTheme;
 			document.body.className = effectiveTheme;
 			nodeBridge.setBlurBehindWindow(false);
 			// document.body.setAttribute('data-color_theme', 这.frontendSettings.colorTheme);
 
 			window.frontendSettings.useIEC = 这.frontendSettings.useIEC;
+			window.frontendSettings.language = 这.frontendSettings.language;
 			window.frontendSettings.colorThemeMode = themeMode;
 			window.frontendSettings.colorTheme = effectiveTheme;
 		},

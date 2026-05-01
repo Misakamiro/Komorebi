@@ -24,6 +24,8 @@ let refreshTimer = 0;
 let rendering = 0;	// 0: 空闲　1: 渲染中　2: 渲染中重复调用 render 时变为此值，当前渲染完成后马上进行下一轮渲染　　本设计暂时无用，因为代码逻辑是同步渲染
 
 const outputDuration = computed(() => selectedTasks.value.task ? getOutputDuration(selectedTasks.value.task) : 0);
+const finitePositive = (value: number, fallback = 0) => Number.isFinite(value) && value > 0 ? value : fallback;
+const safeDivide = (a: number, b: number, fallback = 0) => Number.isFinite(a) && Number.isFinite(b) && Math.abs(b) > 0.000001 ? a / b : fallback;
 const isDark = computed(() => appStore.frontendSettings.colorTheme === 'themeDark');
 const selectionList = computed(() => {
 	const disableNormalChart = !selectedTasks.value.task || selectedTasks.value.task?.progressLog.time.length <= 1;
@@ -44,9 +46,14 @@ const dedupProgressLogSize = computed(() => {
 	const ret: [number, number, number][] = [[progressLog.size[0][0], progressLog.time[0][1], progressLog.size[0][1]]];
 	let lastSize = progressLog.size[0][1];
 	for (let i = 1; i < progressLog.size.length; i++) {
-		if (progressLog.size[i][1] !== lastSize) {
+		const nextTime = progressLog.time[i]?.[1];
+		const nextSize = progressLog.size[i]?.[1];
+		if (!Number.isFinite(nextTime) || !Number.isFinite(nextSize)) {
+			continue;
+		}
+		if (nextSize !== lastSize) {
 			lastSize = progressLog.size[i][1];
-			ret.push([progressLog.size[i][0], progressLog.time[i][1], lastSize]);
+			ret.push([progressLog.size[i][0], nextTime, lastSize]);
 		}
 	}
 	return ret;
@@ -60,8 +67,11 @@ const bitrateGraphData = computed(() => {
 	const logSize = dedupProgressLogSize.value;
 	let maxYDiff = 0;
 	for (let i = 1; i < logSize.length; i++) {
-		const xDiff = logSize[i][1] - logSize[i - 1][1] || Infinity;	// 两记录点之间的媒体时间差（特殊情况下可能为 0，此时数据不准确，故使 y = 0）
-		const yDiff = (logSize[i][2] - logSize[i - 1][2]) / xDiff;
+		const xDiff = logSize[i][1] - logSize[i - 1][1];	// 两记录点之间的媒体时间差
+		const yDiff = safeDivide(logSize[i][2] - logSize[i - 1][2], xDiff, 0);
+		if (!Number.isFinite(yDiff) || yDiff < 0) {
+			continue;
+		}
 		maxYDiff = yDiff > maxYDiff ? yDiff : maxYDiff;
 		const xMid = (logSize[i][1] + logSize[i - 1][1]) / 2;
 		data.push([xMid, yDiff * 8]);
@@ -75,7 +85,10 @@ const speedGraphData = computed(() => {
 	let maxYDiff = 0;
 	for (let i = 1; i < logTime.length; i++) {
 		const xDiff = logTime[i][1] - logTime[i - 1][1];	// 两记录点之间的媒体时间差
-		const yDiff = xDiff / (logTime[i][0] - logTime[i - 1][0]);
+		const yDiff = safeDivide(xDiff, logTime[i][0] - logTime[i - 1][0], 0);
+		if (!Number.isFinite(yDiff) || yDiff < 0) {
+			continue;
+		}
 		maxYDiff = yDiff > maxYDiff ? yDiff : maxYDiff;
 		const xMid = (logTime[i][1] + logTime[i - 1][1]) / 2;
 		data.push([xMid, yDiff]);
@@ -86,6 +99,9 @@ const speedGraphData = computed(() => {
 // #region 字符串 filter
 
 const graphSizeFilter = (kB: number) => {
+	if (!Number.isFinite(kB) || kB < 0) {
+		return '-';
+	}
 	const B = kB * 1000;
 	if (window.frontendSettings.useIEC) {
 		if (B >= 10 * 1024 ** 3) {
@@ -114,7 +130,7 @@ const graphSizeFilter = (kB: number) => {
 	}
 };
 const beforeBitrateFilter = (kbps: number) => {
-	if (isNaN(kbps)) {
+	if (!Number.isFinite(kbps) || kbps < 0) {
 		return '读取中';
 	} else {
 		const bps = kbps * 1000;
@@ -134,6 +150,9 @@ const beforeBitrateFilter = (kbps: number) => {
 	}
 };
 const transferrateFilter = (Bps: number) => {
+	if (!Number.isFinite(Bps) || Bps < 0) {
+		return '-';
+	}
 	if (window.frontendSettings.useIEC) {
 		if (Bps >= 10 * 1024 ** 2) {
 			return (Bps / 1024 ** 2).toFixed(1) + ' MiBps';
@@ -149,6 +168,9 @@ const transferrateFilter = (Bps: number) => {
 	}
 }
 const timeFilter = (value: number, withDecimal = true) => {
+	if (!Number.isFinite(value) || value < 0) {
+		return '-';
+	}
 	let left = value;
 	let hour = Math.floor(left / 3600); left -= hour * 3600;
 	let minute = Math.floor(left / 60); left -= minute * 60;
@@ -172,8 +194,8 @@ const getLastSpeedBitrate = () => {
 	// const afterFramerate = after.outputs[0]?.video.framerate === '不改变' ? before.vframerate : +after.outputs[0]?.video.framerate;
 	return {
 		// speed: frameK / afterFramerate || timeK,	// 媒体时间相对真实时间。如果可以读出帧速，或者输出的是视频，用帧速算 speed 更准确；否则用时间算 speed
-		speed: timeK,
-		bitrate: sizeK * 8,	// 尺寸变化相对媒体时间
+		speed: finitePositive(timeK, 0),
+		bitrate: finitePositive(sizeK * 8, 0),	// 尺寸变化相对媒体时间
 	}
 };
 /** 最大时间/尺寸的计算方法是：现在已经累积的转码时长/输出尺寸 + 根据最新速度和剩余任务时长算出的预计增量 */
@@ -184,28 +206,34 @@ const getEstimatedMaxTimeSize = () => {
 	// 任务最新进度的时间和大小
 	const currentTime = progressLog.time.length > 0 ? progressLog.time[progressLog.time.length - 1][1] : 0;
 	const currentSize = progressLog.size.length > 0 ? progressLog.size[progressLog.size.length - 1][1] : 0;
+	const durationLeft = Math.max(0, finitePositive(outputDuration.value, currentTime) - currentTime);
+	const estimatedTime = lastSpeedBitrate.speed > 0 ? elapsedTime + durationLeft / lastSpeedBitrate.speed : elapsedTime;
+	const estimatedSize = currentSize + durationLeft * lastSpeedBitrate.bitrate * 0.125;	// size 的单位是 kB，bitrate 的单位是 kbps
 	return {
-		time: elapsedTime + (outputDuration.value - currentTime) / lastSpeedBitrate.speed,
-		size: currentSize + (outputDuration.value - currentTime) * lastSpeedBitrate.bitrate * 0.125,	// size 的单位是 kB，bitrate 的单位是 kbps
+		time: finitePositive(estimatedTime, Math.max(elapsedTime, 10)),
+		size: finitePositive(estimatedSize, Math.max(currentSize, 1000)),
 	};
 };
 
 // 获取刻度线间隔
 const getScaleUnit = (total: number, viewWidth: number, isClockUnit = false, threshold = 100, min = 1) => {
-	if (total <= 0) {
+	if (!Number.isFinite(total) || total <= 0 || !Number.isFinite(viewWidth) || viewWidth <= 0) {
 		return min;
 	}
 	let currentScale = min;
 	let step = 0;
-	while (viewWidth / (total / currentScale) < threshold) {	// 如果按当前 scale 分割后产出的刻度线间隔不足阈值，那么降低密度
+	while (Number.isFinite(currentScale) && viewWidth / (total / currentScale) < threshold) {	// 如果按当前 scale 分割后产出的刻度线间隔不足阈值，那么降低密度
 		if (isClockUnit) {
 			currentScale *= [2, 2.5, 2, 1.5, 2, 2][step % 6];	// 1 2 5 10 15 30 60
 		} else {
 			currentScale *= [2, 2.5, 2][step % 3];	// 1 2 5 10
 		}
 		step++;
+		if (step > 128) {
+			break;
+		}
 	}
-	return currentScale;
+	return Number.isFinite(currentScale) && currentScale > 0 ? currentScale : min;
 };
 
 const render = () => {
@@ -229,18 +257,18 @@ const render = () => {
 	// 更新横纵轴端点
 	if (task.progressLog.frame.length >= 5 && task.progressLog.size.length >= 2) {
 		const latestMaxTimeSize = getEstimatedMaxTimeSize();
-		totalTime_smooth.value = totalTime_smooth.value * 0.92 + latestMaxTimeSize.time * 0.08;
-		totalSize_smooth.value = totalSize_smooth.value * 0.92 + latestMaxTimeSize.size * 0.08;
+		totalTime_smooth.value = finitePositive(totalTime_smooth.value * 0.92 + latestMaxTimeSize.time * 0.08, 10);
+		totalSize_smooth.value = finitePositive(totalSize_smooth.value * 0.92 + latestMaxTimeSize.size * 0.08, 1000);
 	}
 	
 	// 绘画准备
-	const horizontalMax = [totalTime_smooth.value, outputDuration.value, outputDuration.value, outputDuration.value][
+	const horizontalMax = finitePositive([totalTime_smooth.value, outputDuration.value, outputDuration.value, outputDuration.value][
 		['progress', 'size', 'bitrate', 'speed'].indexOf(chartType.value)
-	];
+	], 1);
 	const horizontalUnit = getScaleUnit(horizontalMax, canvasWidth, true, 70);
-	const verticalMax = [100, totalSize_smooth.value, bitrateGraphData.value.maxY, speedGraphData.value.maxY][
+	const verticalMax = finitePositive([100, totalSize_smooth.value, bitrateGraphData.value.maxY, speedGraphData.value.maxY][
 		['progress', 'size', 'bitrate', 'speed'].indexOf(chartType.value)
-	];
+	], 1);
 	const verticalUnit = getScaleUnit(verticalMax, canvasHeight, false, 40, chartType.value === 'speed' ? 0.1 : 1);
 
 	context.clearRect(0, 0, canvasWidth, canvasHeight);
@@ -283,7 +311,7 @@ const render = () => {
 		for (let i = 0; i < task.progressLog.time.length; i++) {
 			const elem = task.progressLog.time[i];
 			const x = (elem[0] / horizontalMax) * (canvasWidth - 100) + 100;
-			const y = (1 - elem[1] / outputDuration.value) * (canvasHeight - 30);
+			const y = (1 - safeDivide(elem[1], outputDuration.value, 0)) * (canvasHeight - 30);
 			context.lineTo(x, y);
 		}
 		context.stroke();
@@ -308,6 +336,10 @@ const render = () => {
 		context.lineTo(100, canvasHeight - 30);
 		context.fill();
 	} else if (chartType.value === 'bitrate') {
+		if (!bitrateGraphData.value.data.length) {
+			rendering = 0;
+			return;
+		}
 		context.fillStyle = '#66BB3333';
 		context.strokeStyle = '#66BB33';
 		context.beginPath();
@@ -325,6 +357,10 @@ const render = () => {
 		context.lineTo(firstX, canvasHeight - 30);
 		context.fill();
 	} else if (chartType.value === 'speed') {
+		if (!speedGraphData.value.data.length) {
+			rendering = 0;
+			return;
+		}
 		context.fillStyle = '#DD884433';
 		context.strokeStyle = '#DD8844';
 		context.beginPath();

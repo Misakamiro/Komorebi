@@ -72,6 +72,9 @@
   "nsis": {
     "oneClick": false,
     "allowToChangeInstallationDirectory": true,
+    "displayLanguageSelector": true,
+    "installerLanguages": ["zh_CN", "en_US", "ja_JP"],
+    "multiLanguageInstaller": true,
     "deleteAppDataOnUninstall": false,
   },
 }

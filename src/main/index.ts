@@ -1,6 +1,6 @@
 import { app, dialog, BrowserWindow, ipcMain, Menu, session, shell } from 'electron';
 // import ElectronStore from 'electron-store';
-import { exec, spawn, SpawnOptions } from 'child_process';
+import { spawn, SpawnOptions } from 'child_process';
 import path from 'path';
 import parsePath from 'parse-path';
 import CryptoJS from 'crypto-js';
@@ -22,6 +22,7 @@ interface DownloadMap {
 	finalFileBaseName?: string;
 	dir?: string;	// 批量下载前指定文件夹，这样每个文件下载时就不弹窗
 	fileTime?: { accessTime: number, createTime: number, modifyTime: number };
+	sessionId?: string;
 }
 
 class ElectronApp {
@@ -119,8 +120,13 @@ class ElectronApp {
 
 		// 设置默认使用外部应用（浏览器）打开链接
 		mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-			if (['https:', 'http:'].includes(new URL(url).protocol)) {
-				shell.openExternal(url);
+			try {
+				const parsedUrl = new URL(url);
+				if (['https:', 'http:'].includes(parsedUrl.protocol)) {
+					shell.openExternal(parsedUrl.toString());
+				}
+			} catch {
+				// Ignore malformed URLs from renderer-created windows.
 			}
 			return { action: 'deny' };
 		});
@@ -159,11 +165,12 @@ class ElectronApp {
 			const map = this.downloadMap.get(url);
 			if (!map || map?.item) return;
 			map.item = item;
+			const finalFileBaseName = map.finalFileBaseName || item.getFilename() || 'download';
 
 			if (map.dir) {
-				item.setSavePath(path.join(map.dir, map.finalFileBaseName));
+				item.setSavePath(path.join(map.dir, finalFileBaseName));
 			} else {
-				item.setSaveDialogOptions({ defaultPath: map.finalFileBaseName });
+				item.setSaveDialogOptions({ defaultPath: finalFileBaseName });
 			}
 			mainWindow.webContents.send('downloadStatusChange', { url: url, status: 'started' });
 			item.on('updated', (event, state) => {
@@ -222,6 +229,16 @@ class ElectronApp {
 		return '';
 	}
 
+	private async firstReadable(candidates: string[]): Promise<string> {
+		for (const candidate of [...new Set(candidates.filter(Boolean))]) {
+			try {
+				await fs.access(candidate, fs.constants.R_OK);
+				return candidate;
+			} catch {}
+		}
+		return '';
+	}
+
 	async createService(): Promise<void> {
 		this.service = new ProcessInstance();
 		let servicePath = '';
@@ -270,6 +287,14 @@ class ElectronApp {
 	}
 
 	mountIpcEvents(): void {
+		session.defaultSession.webRequest.onBeforeSendHeaders((details, callback) => {
+			const download = this.downloadMap.get(details.url);
+			if (download?.sessionId) {
+				details.requestHeaders['Authorization'] = `Bearer ${download.sessionId}`;
+			}
+			callback({ requestHeaders: details.requestHeaders });
+		});
+
 		// 最小化按钮
 		ipcMain.on('minimize', () => {
 			this.mainWindow.minimize();
@@ -296,17 +321,12 @@ class ElectronApp {
 
 		// 打开 url
 		ipcMain.on('jumpToUrl', (event, url: string) => {
-			switch (getOs()) {
-				case 'MacOS':
-					exec('open ' + url);
-					break;
-				case 'Windows':
-					exec('start ' + url);
-					break;
-				case 'Linux':
-					exec('xdg-open' + url);
-					break;
-			}
+			try {
+				const parsedUrl = new URL(url);
+				if (['https:', 'http:'].includes(parsedUrl.protocol)) {
+					shell.openExternal(parsedUrl.toString());
+				}
+			} catch {}
 		});
 
 		// 打开文件
@@ -421,14 +441,16 @@ class ElectronApp {
 
 		// 获取本地文件块
 		ipcMain.handle('getLocalFileChunk', async (event, url: string, start: number, length: number) => {
+			let fd: Awaited<ReturnType<typeof fs.open>> | undefined;
 			try {
-				const fd = await fs.open(url, 'r');
+				fd = await fs.open(url, 'r');
 				const buffer = new Uint8Array(length);
 				await fd.read(buffer, 0, length, start);
-				await fd.close();
 				return buffer;
 			} catch (e) {
 				return undefined;
+			} finally {
+				await fd?.close().catch(() => {});
 			}
 		});
 
@@ -460,11 +482,7 @@ class ElectronApp {
 		ipcMain.on('downloadFile', (_event, params: { url: string; sessionId: string; finalFileBaseName?: string; fileTime?: any }) => {
 			console.log('发动下载请求：', params.url);
 			const { finalFileBaseName, fileTime } = params;
-			this.downloadMap.set(params.url, { finalFileBaseName, fileTime });
-			session.defaultSession.webRequest.onBeforeSendHeaders((details, callback) => {
-				details.requestHeaders['Authorization'] = `Bearer ${params.sessionId}`;
-				callback({ requestHeaders: details.requestHeaders });
-			});
+			this.downloadMap.set(params.url, { finalFileBaseName, fileTime, sessionId: params.sessionId });
 			this.mainWindow!.webContents.downloadURL(params.url);
 		});
 
@@ -475,7 +493,7 @@ class ElectronApp {
 			});
 			if (!result.canceled) {
 				for (const file of params.files) {
-					this.downloadMap.set(file.url, { finalFileBaseName: file.finalFileBaseName, fileTime: file.fileTime, dir: result.filePaths[0] });
+					this.downloadMap.set(file.url, { finalFileBaseName: file.finalFileBaseName, fileTime: file.fileTime, dir: result.filePaths[0], sessionId: params.sessionId });
 					this.mainWindow!.webContents.downloadURL(file.url);
 				}
 			}
@@ -523,7 +541,12 @@ class ElectronApp {
 			return new Promise(async (resolve) => {
 				let licensePath = '';
 				if (getOs() === 'Windows') {
-					licensePath = './LICENSE';
+					licensePath = await this.firstReadable([
+						path.join(path.dirname(process.execPath), 'LICENSE'),
+						process.resourcesPath ? path.join(process.resourcesPath, '..', 'LICENSE') : '',
+						path.join(process.cwd(), 'LICENSE'),
+						path.join(app.getAppPath(), 'LICENSE'),
+					]);
 				} else if (getOs() === 'MacOS') {
 					licensePath = path.join(process.resourcesPath, '../LICENSE');
 				} else if (getOs() === 'Linux') {

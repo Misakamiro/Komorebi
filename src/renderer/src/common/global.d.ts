@@ -31,6 +31,7 @@ declare global {
 			useIEC?: boolean;
 			colorTheme?: string;
 			colorThemeMode?: string;
+			language?: string;
 		}
 	}
 }

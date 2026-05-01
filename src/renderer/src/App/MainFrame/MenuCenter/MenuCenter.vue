@@ -9,17 +9,23 @@ import { handleCloseConfirm } from '@renderer/logic/eventsHandler';
 import { showEnvironmentInfo } from '@renderer/components/misc/EnvironmentInfo';
 import { showAddTaskPrompt, showOpenFilePrompt } from '@renderer/components/misc/AddTasks';
 import LocalSettings from './LocalSettings/LocalSettings.vue';
+import AboutPanel from './AboutPanel.vue';
 import Popup from '@renderer/components/Popup/Popup';
 import IconSidebarSettings from './settings.svg?component';
+import IconSidebarTerm from './term.svg?component';
+import i11n from '@common/i11n/i11n';
 
 const appStore = useAppStore();
 
-const sidebarIcons = [IconSidebarSettings];
-const sidebarTexts = ['设置'];
+const sidebarIcons = [IconSidebarSettings, IconSidebarTerm];
+const sidebarTexts = computed(() => {
+	appStore.frontendSettings.language;
+	return [i11n.frontend.menuCenter.settings, i11n.frontend.menuCenter.about];
+});
 const sidebarColors = computed(() =>
 	appStore.frontendSettings.colorTheme === 'themeLight'
-		? ['hwb(195 0% 10%)']
-		: ['hwb(195 5% 5%)'],
+		? ['hwb(195 0% 10%)', 'hwb(26 15% 0%)']
+		: ['hwb(195 5% 5%)', 'hwb(26 25% 0%)'],
 );
 const animationName = ref('animationUp');
 
@@ -35,30 +41,32 @@ const addFiles = () => {
 };
 
 const finalMenu = computed(() => {
+	appStore.frontendSettings.language;
+	const menuText = i11n.frontend.appMenu;
 	const ret: MenuItem[] = [
 		{
 			type: 'submenu',
 			label: 'Komorebi (A)',
 			subMenu: [
-				{ type: 'normal', label: `Komorebi v${version}`, value: 'Komorebi', tooltip: '显示环境信息', onClick: () => showEnvironmentInfo() },
+				{ type: 'normal', label: `Komorebi v${version}`, value: 'Komorebi', tooltip: menuText.showEnvironmentInfo, onClick: () => showEnvironmentInfo() },
 				{ type: 'separator' },
-				{ type: 'submenu', label: '来源声明', subMenu: [
-					{ type: 'normal', label: 'FFBox 项目', value: 'ffbox-source', onClick: () => nodeBridge.jumpToUrl('https://github.com/ttqftech/FFBox') },
-					{ type: 'normal', label: 'ncmdump 项目', value: 'ncmdump-source', onClick: () => nodeBridge.jumpToUrl('https://github.com/taurusxin/ncmdump') },
-					{ type: 'normal', label: 'FFmpeg 项目', value: 'ffmpeg-source', onClick: () => nodeBridge.jumpToUrl('https://ffmpeg.org') },
+				{ type: 'submenu', label: menuText.sourceNotice, subMenu: [
+					{ type: 'normal', label: menuText.ffboxProject, value: 'ffbox-source', onClick: () => nodeBridge.jumpToUrl('https://github.com/ttqftech/FFBox') },
+					{ type: 'normal', label: menuText.ncmdumpProject, value: 'ncmdump-source', onClick: () => nodeBridge.jumpToUrl('https://github.com/taurusxin/ncmdump') },
+					{ type: 'normal', label: menuText.ffmpegProject, value: 'ffmpeg-source', onClick: () => nodeBridge.jumpToUrl('https://ffmpeg.org') },
 				] },
 				{ type: 'separator' },
-				{ type: 'normal', label: '退出 Komorebi', value: 'closeKomorebi', onClick: () => handleCloseConfirm() },
+				{ type: 'normal', label: menuText.exit, value: 'closeKomorebi', onClick: () => handleCloseConfirm() },
 			],
 		},
 		{
 			type: 'submenu',
-			label: '任务 (T)',
+			label: menuText.tasks,
 			subMenu: [
-				{ type: 'normal', label: '添加任务（选择文件）', value: 'addTasksFromFiles', tooltip: '选择文件并加入当前功能队列', onClick: addFiles },
-				{ type: 'normal', label: '添加任务（从文本）', value: 'addTasksFromText', tooltip: '输入每行一个文件或目录路径', onClick: () => showAddTaskPrompt() },
-				{ type: 'submenu', label: '所有任务操作', subMenu: [
-					{ type: 'normal', label: '停止', value: 'resetAllTasks', onClick: () => {
+				{ type: 'normal', label: menuText.addTasksFromFiles, value: 'addTasksFromFiles', tooltip: menuText.addTasksFromFilesTip, onClick: addFiles },
+				{ type: 'normal', label: menuText.addTasksFromText, value: 'addTasksFromText', tooltip: menuText.addTasksFromTextTip, onClick: () => showAddTaskPrompt() },
+				{ type: 'submenu', label: menuText.allTaskActions, subMenu: [
+					{ type: 'normal', label: menuText.stop, value: 'resetAllTasks', onClick: () => {
 						let count = 0;
 						for (const [id, task] of Object.entries(appStore.currentServer?.data.tasks || {})) {
 							if ([TaskStatus.idle_queued, TaskStatus.running, TaskStatus.paused, TaskStatus.paused_queued].includes(task.status)) {
@@ -66,23 +74,23 @@ const finalMenu = computed(() => {
 								count++;
 							}
 						}
-						Popup({ message: `已停止 ${count} 个任务` });
+						Popup({ message: menuText.stoppedTasks(count) });
 					} },
-					{ type: 'normal', label: '删除已完成', value: 'deleteFinishedTasks', onClick: () => {
+					{ type: 'normal', label: menuText.deleteFinished, value: 'deleteFinishedTasks', onClick: () => {
 						const taskIds = Object.entries(appStore.currentServer?.data.tasks || {})
 							.filter(([, task]) => task.status === TaskStatus.finished)
 							.map(([id]) => +id);
 						appStore.deleteTasks(taskIds);
-						Popup({ message: `已删除 ${taskIds.length} 个任务` });
+						Popup({ message: menuText.deletedTasks(taskIds.length) });
 					} },
-					{ type: 'normal', label: '删除未启动', value: 'deleteIdleTasks', onClick: () => {
+					{ type: 'normal', label: menuText.deleteIdle, value: 'deleteIdleTasks', onClick: () => {
 						const taskIds = Object.entries(appStore.currentServer?.data.tasks || {})
 							.filter(([, task]) => [TaskStatus.idle, TaskStatus.idle_queued].includes(task.status))
 							.map(([id]) => +id);
 						appStore.deleteTasks(taskIds);
-						Popup({ message: `已删除 ${taskIds.length} 个任务` });
+						Popup({ message: menuText.deletedTasks(taskIds.length) });
 					} },
-					{ type: 'normal', label: '重置出错任务', value: 'resetErrorTasks', onClick: () => {
+					{ type: 'normal', label: menuText.resetErrors, value: 'resetErrorTasks', onClick: () => {
 						let count = 0;
 						for (const [id, task] of Object.entries(appStore.currentServer?.data.tasks || {})) {
 							if (task.status === TaskStatus.error) {
@@ -90,55 +98,55 @@ const finalMenu = computed(() => {
 								count++;
 							}
 						}
-						Popup({ message: `已重置 ${count} 个任务` });
+						Popup({ message: menuText.resetTasks(count) });
 					} },
 				] },
-				{ type: 'submenu', label: '选中任务操作', subMenu: [
-					{ type: 'normal', label: '立即开始', value: 'startSelectedTasks', onClick: () => {
+				{ type: 'submenu', label: menuText.selectedTaskActions, subMenu: [
+					{ type: 'normal', label: menuText.startNow, value: 'startSelectedTasks', onClick: () => {
 						for (const taskId of appStore.selectedTask) {
 							appStore.currentServer.entity.taskStart(taskId);
 						}
 					} },
-					{ type: 'normal', label: '排队开始', value: 'queueSelectedTasks', onClick: () => {
+					{ type: 'normal', label: menuText.queueStartSelected, value: 'queueSelectedTasks', onClick: () => {
 						for (const taskId of appStore.selectedTask) {
 							appStore.currentServer.entity.taskReady(taskId);
 						}
 					} },
-					{ type: 'normal', label: '停止或重置', value: 'resetSelectedTasks', onClick: () => {
+					{ type: 'normal', label: menuText.stopOrReset, value: 'resetSelectedTasks', onClick: () => {
 						for (const taskId of appStore.selectedTask) {
 							appStore.currentServer.entity.taskReset(taskId);
 						}
 					} },
-					{ type: 'normal', label: '删除', value: 'deleteSelectedTasks', onClick: () => {
+					{ type: 'normal', label: menuText.delete, value: 'deleteSelectedTasks', onClick: () => {
 						appStore.deleteTasks([...appStore.selectedTask]);
 					} },
 				] },
 				{ type: 'separator' },
-				{ type: 'normal', label: '开始执行队列', value: 'startQueue', onClick: () => appStore.currentServer?.entity.queueStart() },
-				{ type: 'normal', label: '暂停执行队列', value: 'pauseQueue', disabled: appStore.currentServer?.data.workingStatus === WorkingStatus.idle, onClick: () => appStore.currentServer?.entity.queuePause() },
+				{ type: 'normal', label: menuText.startQueue, value: 'startQueue', onClick: () => appStore.currentServer?.entity.queueStart() },
+				{ type: 'normal', label: menuText.pauseQueue, value: 'pauseQueue', disabled: appStore.currentServer?.data.workingStatus === WorkingStatus.idle, onClick: () => appStore.currentServer?.entity.queuePause() },
 			],
 		},
 		{
 			type: 'submenu',
-			label: '视图 (V)',
+			label: menuText.view,
 			subMenu: [
-				{ type: 'normal', label: '放大', value: 'zoomIn', onClick: () => nodeBridge.zoomPage('in') },
-				{ type: 'normal', label: '缩小', value: 'zoomOut', onClick: () => nodeBridge.zoomPage('out') },
-				{ type: 'normal', label: '重置缩放', value: 'zoomReset', onClick: () => nodeBridge.zoomPage('reset') },
+				{ type: 'normal', label: menuText.zoomIn, value: 'zoomIn', onClick: () => nodeBridge.zoomPage('in') },
+				{ type: 'normal', label: menuText.zoomOut, value: 'zoomOut', onClick: () => nodeBridge.zoomPage('out') },
+				{ type: 'normal', label: menuText.resetZoom, value: 'zoomReset', onClick: () => nodeBridge.zoomPage('reset') },
 				{ type: 'separator' },
-				{ type: 'checkbox', label: '通知中心', value: 'toggleInfoCenter', checked: appStore.showInfoCenter, onClick: () => {
+				{ type: 'checkbox', label: menuText.infoCenter, value: 'toggleInfoCenter', checked: appStore.showInfoCenter, onClick: () => {
 					appStore.showInfoCenter = !appStore.showInfoCenter;
 					if (appStore.showInfoCenter) {
 						appStore.showMenuCenter = 0;
 					}
 				} },
-				{ type: 'checkbox', label: '传输中心', value: 'toggleTransferCenter', checked: appStore.showTransferCenter, onClick: () => {
+				{ type: 'checkbox', label: menuText.transferCenter, value: 'toggleTransferCenter', checked: appStore.showTransferCenter, onClick: () => {
 					appStore.showTransferCenter = !appStore.showTransferCenter;
 					if (appStore.showTransferCenter) {
 						appStore.showMenuCenter = 0;
 					}
 				} },
-				{ type: 'checkbox', label: '菜单中心', value: 'toggleMenuCenter', checked: appStore.showMenuCenter === 2, onClick: () => {
+				{ type: 'checkbox', label: menuText.menuCenter, value: 'toggleMenuCenter', checked: appStore.showMenuCenter === 2, onClick: () => {
 					appStore.showMenuCenter = appStore.showMenuCenter === 2 ? 0 : 2;
 					if (appStore.showMenuCenter === 2) {
 						appStore.showInfoCenter = false;
@@ -309,7 +317,7 @@ const handleMenuItemClicked = (event: Event, value: any) => {
 		const ret = correspondingMenuItem.item.onClick(event, value);
 		if (ret === true) {
 			appStore.showMenuCenter = 0;
-		} else if (ret !== false && correspondingMenuItem.route.includes('任务 (T)')) {
+		} else if (ret !== false && correspondingMenuItem.route.includes(i11n.frontend.appMenu.tasks)) {
 			appStore.showMenuCenter = 0;
 		}
 	}
@@ -362,14 +370,15 @@ onMounted(() => {
 		<div class="lrCenter">
 			<div>
 				<div class="selectors">
-					<button v-for="index in [0]" :key="index" :aria-label="sidebarTexts[index]" @click="handleParaButtonClicked(index)">
+					<button v-for="index in [0, 1]" :key="index" :aria-label="sidebarTexts[index]" @click="handleParaButtonClicked(index)">
 						<component :is="sidebarIcons[index]" :style="getButtonColorStyle(index)" />
 						<span :style="getButtonColorStyle(index)">{{ sidebarTexts[index] }}</span>
 					</button>
 				</div>
 				<div class="content">
-					<Transition :name="animationName">
+					<Transition :name="animationName" mode="out-in">
 						<LocalSettings v-if="selectedPanelIndex === 0" />
+						<AboutPanel v-else-if="selectedPanelIndex === 1" />
 					</Transition>
 				</div>
 			</div>
@@ -489,14 +498,20 @@ onMounted(() => {
 					background-color: transparent;
 					border: none;
 					border-radius: 8px;
+					transition: background-color 0.16s ease, transform 0.16s cubic-bezier(0.2, 0.9, 0.2, 1), box-shadow 0.16s ease;
 					&:hover {
 						background-color: hwb(var(--hoverLightBg) / 0.4);
+						transform: translateX(2px);
+					}
+					&:active {
+						transform: translateX(1px) scale(0.985);
 					}
 					svg {
 						width: 18px;
 						height: 18px;
 						vertical-align: -4px;
 						margin-right: 6px;
+						transition: color 0.18s ease, transform 0.18s cubic-bezier(0.2, 0.9, 0.2, 1);
 					}
 				}
 			}
@@ -507,6 +522,8 @@ onMounted(() => {
 				top: 0;
 				bottom: 0;
 				text-align: left;
+				overflow: auto;
+				overscroll-behavior: contain;
 			}
 		}
 	}

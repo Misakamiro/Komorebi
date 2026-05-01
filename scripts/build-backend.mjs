@@ -8,8 +8,7 @@ const execPromise = util.promisify(ChildProcess.exec);
 const backendConfig = path.resolve('config/vite.backend.ts');
 // const backendConfig = path.join(__dirname, '../config/vite.backend.ts');
 // const backendConfig = require(path.join(__dirname, '../config/vite.backend.ts'));
-
-const npmExecutablePath = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const pkgCli = path.resolve('node_modules/pkg/lib-es5/bin.js');
 
 // 颜色信息可参考 https://misc.flogisoft.com/bash/tip_colors_and_formatting
 function wrapColor(color, msg) {
@@ -59,7 +58,16 @@ async function buildBackend() {
 	});
 	const cmdName = process.platform === 'win32' ? 'win' : (process.platform === 'darwin' ? 'mac' : 'linux');
 	if (!process.env.disable_pkg) {
-		const buildProcess = spawnSync(npmExecutablePath, ['run', `pkg:backend:${cmdName}`], { stdio: 'inherit', 'shell': true });
+		if (cmdName !== 'win') {
+			throw new Error(`No pkg config is defined for ${cmdName}.`);
+		}
+		const buildProcess = spawnSync(process.execPath, [pkgCli, '--config', './config/pkg.win.config.json', './app/backend/index.cjs'], { stdio: 'inherit' });
+		if (buildProcess.error) {
+			throw buildProcess.error;
+		}
+		if (buildProcess.status !== 0) {
+			process.exit(buildProcess.status ?? 1);
+		}
 	}
 	// buildProcess.once('exit', process.exit);
 }

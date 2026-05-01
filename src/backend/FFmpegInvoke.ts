@@ -51,6 +51,8 @@ interface FilterResult {
 	description: string;
 }
 
+type EncoderOption = EncoderDetail['options'][number];
+
 interface FFmpegInvokerEvent {
 	data: (arg: { content: string }) => void;
 	status: (arg: { frame: number; fps: number; q: number; size: number; time: number; bitrate: number; speed: number }) => void;
@@ -145,7 +147,7 @@ export class FFmpeg extends (EventEmitter as new () => TypedEventEmitter<FFmpegI
 	private formatsResult: FormatsResult = { muxers: [], demuxers: [] };
 	private filtersResult: FilterResult[] = [];
 	private framesResult: Frame[] = [];
-	private readingAVOption: EncoderDetail['options'][number];
+	private readingAVOption: EncoderOption;
 	private readingInputsInfoBuffer: string[] = [];
 	private inputsInfo: InputInfo[] = [];
 
@@ -665,7 +667,7 @@ export class FFmpeg extends (EventEmitter as new () => TypedEventEmitter<FFmpegI
 					const min = minmaxRegx ? parseValue(minmaxRegx[1]) : undefined as any;
 					const max = minmaxRegx ? parseValue(minmaxRegx[2]) : undefined as any;
 					const defaultValue = defaultRegx ? parseValue(defaultRegx[1]) : undefined;
-					const option: typeof this.readingAVOption = {
+					const option: EncoderOption = {
 						name: basicInfoRegx[1],
 						type: basicInfoRegx[2].includes('[') ? basicInfoRegx[2].match(/[\w_]+/)[0] + '[]' : basicInfoRegx[2].match(/[\w+]+/)[0] as any,
 						description: basicInfoRegx[4],

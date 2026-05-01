@@ -4,6 +4,8 @@ import { useAppStore } from '@renderer/stores/appStore';
 import { ServiceBridgeStatus } from '@renderer/bridges/serviceBridge';
 import { showAddTaskPrompt } from '@renderer/components/misc/AddTasks';
 import nodeBridge from '@renderer/bridges/nodeBridge';
+import i11n from '@common/i11n/i11n';
+import dropFilesOkImage from '@renderer/assets/komorebi-guides/drop-files-ok.png';
 
 const appStore = useAppStore();
 const multiInputMode = ref(false);
@@ -13,6 +15,10 @@ const draggingStatus = ref<{ count: number, fileCount: number }>();
 
 const largeAreaHue = computed(() => multiInputMode.value ? 220 : 200);
 const isNcmMode = computed(() => appStore.komorebi.workflow === 'ncm');
+const tr = computed(() => {
+	appStore.frontendSettings.language;
+	return i11n.frontend.dragDrop;
+});
 
 const workflowExtensions: Record<string, string[]> = {
 	'video-compress': ['.mp4', '.mkv', '.mov', '.webm', '.avi', '.flv', '.wmv', '.m4v', '.ts', '.m2ts', '.mts', '.mpg', '.mpeg', '.3gp'],
@@ -166,21 +172,23 @@ const handleDrop = (event: DragEvent) => {
 		>
 			<div class="dragFrame">
 				<div class="inner" v-if="draggingStatus">
+					<img class="guideImage" :src="dropFilesOkImage" alt="" />
 					<p :style="{ fontSize: '2em' }">{{ Math.abs(draggingStatus.fileCount) }}</p>
-					<p v-if="isNcmMode">{{ draggingStatus.fileCount === -1 ? '文本路径' : '' }}个 NCM 输入</p>
-					<p v-else>{{ draggingStatus.fileCount === -1 ? '文本路径组成的多' : '' }}个{{ multiInputMode ? '输入路径' : '独立任务' }}</p>
+					<p v-if="isNcmMode">{{ tr.ncmInputs(draggingStatus.fileCount === -1 ? tr.textPaths : '', Math.abs(draggingStatus.fileCount)) }}</p>
+					<p v-else>{{ tr.inputs(draggingStatus.fileCount === -1 ? tr.textPaths : '', Math.abs(draggingStatus.fileCount), multiInputMode ? 'multiInput' : 'multiTask') }}</p>
 				</div>
 				<div class="inner" v-else>
-					<p>拖动文件/文件夹/文本至此处创建任务</p>
+					<img class="guideImage" :src="dropFilesOkImage" alt="" />
+					<p>{{ tr.createTask }}</p>
 				</div>
 			</div>
 			<div class="switchMultiInputMode" v-if="!isNcmMode">
-				<div :class="multiInputMode ? 'small' : ''">{{ multiInputMode ? '🔲' : '✅' }} 批量添加任务模式</div>
-				<div :class="multiInputMode ? '' : 'small'">{{ multiInputMode ? '✅' : '🔲' }} 多输入单任务模式</div>
+				<div :class="multiInputMode ? 'small' : ''">{{ multiInputMode ? '🔲' : '✅' }} {{ tr.batchTaskMode }}</div>
+				<div :class="multiInputMode ? '' : 'small'">{{ multiInputMode ? '✅' : '🔲' }} {{ tr.multiInputMode }}</div>
 			</div>
 			<div class="switchFastStartMode" :class="fastStartMode ? 'enabled' : ''" v-if="!draggingStatus || draggingStatus.fileCount !== -1">
-				<div>{{ fastStartMode ? '✅' : '🔲' }} 拖入文件即开始</div>
-				<div class="small">状态：{{ fastStartMode ? '启用' : '不用' }}</div>
+				<div>{{ fastStartMode ? '✅' : '🔲' }} {{ tr.fastStart }}</div>
+				<div class="small">{{ tr.status(fastStartMode) }}</div>
 			</div>
 		</div>
 	</Transition>
@@ -249,9 +257,25 @@ const handleDrop = (event: DragEvent) => {
 				-webkit-mask-repeat: no-repeat;
 				-webkit-mask-position: center;
 				-webkit-mask-size: cover;
+				.guideImage {
+					width: min(26cqw, 30cqh, 220px);
+					height: min(26cqw, 30cqh, 220px);
+					object-fit: contain;
+					margin-bottom: 10px;
+					filter: drop-shadow(0 12px 24px hwb(var(--hoverShadow) / 0.16));
+					animation: guideImageFloat 2.6s ease-in-out infinite;
+				}
 				p {
 					margin: 0;
 				}
+			}
+		}
+		@keyframes guideImageFloat {
+			0%, 100% {
+				transform: translateY(0) scale(1);
+			}
+			50% {
+				transform: translateY(-4px) scale(1.015);
 			}
 		}
 		.switchMultiInputMode, .switchFastStartMode {

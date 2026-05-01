@@ -20,6 +20,10 @@
 		"jsxImportSource": "vue",
 		"allowJs": true,
 		"moduleResolution": "node16",
+		"types": [
+			"node"
+		],
+		"skipLibCheck": true,
 		"esModuleInterop": true, // 对于 upath 包，不开启此选项的情况下需要 import * as fs from 'fs'
 		"baseUrl": ".",
 		"paths": {

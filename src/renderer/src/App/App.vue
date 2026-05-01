@@ -10,6 +10,7 @@ import { parseFFmpegCodecsToCodecsList, parseFFmpegFiltersToFiltersList, parseFF
 import Popup from '@renderer/components/Popup/Popup';
 import nodeBridge from '@renderer/bridges/nodeBridge';
 import MainFrame from './MainFrame/MainFrame.vue';
+import i11n from '@common/i11n/i11n';
 
 const appStore = useAppStore();
 let colorSchemeMediaQuery: MediaQueryList | undefined;
@@ -104,7 +105,7 @@ onMounted(async () => {
 		const storedBuildNumber = await nodeBridge.localStorage.get('version.buildNumber');
 		if (!storedBuildNumber || storedBuildNumber != buildNumber) {
 			Popup({
-				message: `欢迎使用 Komorebi ${version}`,
+				message: i11n.frontend.dialogs.welcome(version),
 				level: 0,
 			});
 			nodeBridge.localStorage.set('version.buildNumber', buildNumber);
@@ -117,7 +118,7 @@ onMounted(async () => {
 		if (!storedFrontendSettings.colorThemeMode && storedFrontendSettings.colorTheme) {
 			storedFrontendSettings.colorThemeMode = storedFrontendSettings.colorTheme === 'themeDark' ? 'dark' : 'light';
 		}
-		const validFrontendSettings = ['colorTheme', 'colorThemeMode', 'useIEC', 'useVirtualTaskList'];
+		const validFrontendSettings = ['colorTheme', 'colorThemeMode', 'language', 'useIEC', 'useVirtualTaskList'];
 		for (const key of Object.keys(storedFrontendSettings)) {
 			if (!validFrontendSettings.includes(key)) {
 				delete storedFrontendSettings[key];
@@ -173,5 +174,14 @@ onUnmounted(() => {
 		height: 100vh;
 		overflow: hidden;
 		position: relative;
+	}
+	button, input, select, textarea {
+		font-family: inherit;
+	}
+	button {
+		-webkit-tap-highlight-color: transparent;
+	}
+	* {
+		scrollbar-color: hwb(var(--bg80, 0 80% 20%) / 0.45) transparent;
 	}
 </style>

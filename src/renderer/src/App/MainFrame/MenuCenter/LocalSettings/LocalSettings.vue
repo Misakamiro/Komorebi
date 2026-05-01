@@ -1,8 +1,9 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import { useAppStore } from '@renderer/stores/appStore';
 import RadioList, { Props as RadioListProps } from '@renderer/components/RadioList/RadioList.vue';
 import { useTooltip } from '@renderer/common/tooltipUtil';
-import i11n from '@common/i11n/i11n';
+import i11n, { languageOptions } from '@common/i11n/i11n';
 
 const appStore = useAppStore();
 
@@ -10,15 +11,20 @@ const dataRadixList: RadioListProps['list'] = [
 	{ value: false, caption: '1000 进制 (SI)' },
 	{ value: true, caption: '1024 进制 (IEC)' },
 ];
-const colorThemeList: RadioListProps['list'] = [
-	{ value: 'light', caption: '浅色' },
-	{ value: 'dark', caption: '深色' },
-	{ value: 'system', caption: '跟随系统' },
-];
-const useVirtualTaskListList: RadioListProps['list'] = [
-	{ value: true, caption: '启用虚拟列表（强优化）' },
-	{ value: false, caption: '完整渲染（弱优化）' },
-];
+const tr = computed(() => {
+	appStore.frontendSettings.language;
+	return i11n.frontend.settings;
+});
+const languageList = computed<RadioListProps['list']>(() => languageOptions);
+const colorThemeList = computed<RadioListProps['list']>(() => [
+	{ value: 'light', caption: tr.value.light },
+	{ value: 'dark', caption: tr.value.dark },
+	{ value: 'system', caption: tr.value.system },
+]);
+const useVirtualTaskListList = computed<RadioListProps['list']>(() => [
+	{ value: true, caption: tr.value.enableVirtualTaskList },
+	{ value: false, caption: tr.value.fullRenderTaskList },
+]);
 
 const handleSettingChange = (key: keyof typeof appStore.frontendSettings, value: any) => {
 	(appStore.frontendSettings[key] as any) = value;
@@ -29,12 +35,14 @@ const handleSettingChange = (key: keyof typeof appStore.frontendSettings, value:
 <template>
 	<div class="localSettings">
 		<div class="gridArea">
-			<span>数据量进制和词头</span>
+			<span>{{ tr.language }}</span>
+			<RadioList :list="languageList" :value="appStore.frontendSettings.language" @change="(value) => handleSettingChange('language', value)" />
+			<span>{{ tr.dataRadix }}</span>
 			<RadioList :list="dataRadixList" :value="appStore.frontendSettings.useIEC" @change="(value) => handleSettingChange('useIEC', value)" />
-			<span>颜色主题</span>
+			<span>{{ tr.colorTheme }}</span>
 			<RadioList :list="colorThemeList" :value="appStore.frontendSettings.colorThemeMode" @change="(value) => handleSettingChange('colorThemeMode', value)" />
-			<span v-bind="useTooltip(i11n.frontend.settings.useVirtualTaskListDesc, 't')">任务列表性能优化</span>
-			<RadioList v-bind="useTooltip(i11n.frontend.settings.useVirtualTaskListDesc, 't')" :list="useVirtualTaskListList" :value="appStore.frontendSettings.useVirtualTaskList" @change="(value) => handleSettingChange('useVirtualTaskList', value)" />
+			<span v-bind="useTooltip(tr.useVirtualTaskListDesc, 't')">{{ tr.taskListPerformance }}</span>
+			<RadioList v-bind="useTooltip(tr.useVirtualTaskListDesc, 't')" :list="useVirtualTaskListList" :value="appStore.frontendSettings.useVirtualTaskList" @change="(value) => handleSettingChange('useVirtualTaskList', value)" />
 		</div>
 	</div>
 </template>

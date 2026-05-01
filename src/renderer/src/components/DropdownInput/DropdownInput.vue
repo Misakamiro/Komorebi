@@ -150,7 +150,7 @@ onMounted(() => {
 </script>
 
 <template>
-	<div class="combobox-selector" ref="selectorRef" :style="selectorStyle" @click="openMenu">
+	<div class="combobox-selector" :class="{ comboOpened }" ref="selectorRef" :style="selectorStyle" @click="openMenu">
 		<input
 			type="text"
 			v-model="inputText"
@@ -174,12 +174,15 @@ onMounted(() => {
 		background: var(--f7);
 		border: #AAA 1px solid;
 		box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
+		transition: background-color 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s cubic-bezier(0.2, 0.9, 0.2, 1);
 	}
 	.combobox-selector:hover {
 		background: var(--ff);
+		transform: translateY(-1px);
 	}
 	.combobox-selector:active {
 		background: var(--e7);
+		transform: translateY(0);
 	}
 		.combobox-selector input {
 			position: absolute;
@@ -203,5 +206,9 @@ onMounted(() => {
 			width: 16px;
 			height: 16px;
 			background: url(/src/assets/mainArea/paraBox/menu_button.svg) center/contain no-repeat;
+			transition: transform 0.18s cubic-bezier(0.2, 0.9, 0.2, 1), opacity 0.18s ease;
 		}
+	.combobox-selector.comboOpened .combobox-selector-img {
+		transform: rotate(180deg);
+	}
 </style>

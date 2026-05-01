@@ -24,6 +24,7 @@ const props = defineProps<{
         border: hwb(0 80% 20%) 1px solid;
         border-radius: 10px;
         box-shadow: 0 2px 2px hwb(0 80% 20% / 0.2);
+        transition: background-color 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s cubic-bezier(0.2, 0.9, 0.2, 1);
         .round {
             position: absolute;
             left: 5px;
@@ -32,14 +33,18 @@ const props = defineProps<{
             height: 10px;
             border-radius: 5px;
             background-color: transparent;
+            transform: scale(0);
+            transition: background-color 0.16s ease, transform 0.18s cubic-bezier(0.2, 0.9, 0.2, 1);
         }
     }
     .boxSelected {
         background-color: hwb(220 25% 10%);
         border: none;
         box-shadow: 0 2px 4px hwb(220 25% 10% / 0.2);
+        transform: scale(1.02);
         .round {
             background-color: #FFF;
+            transform: scale(1);
         }
     }
 </style>

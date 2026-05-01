@@ -49,6 +49,9 @@ function getKbyLWMA_obj(sampleCount: number, xFactorName: string, yFactorsName: 
  * 如果采样数量少于 sampleCount，低权重的缺失值相当于填充 0
  */
 function getKbyLWMA(sampleCount: number, data: SingleProgressLog): number {
+	if (data.length < 2) {
+		return 0;
+	}
 	// xFactor：时间　yFactor：参数值
 	let deltaXFactorSum = 0;
 	let deltaYFactorSum = 0;
@@ -59,7 +62,11 @@ function getKbyLWMA(sampleCount: number, data: SingleProgressLog): number {
 		deltaYFactorSum += weight * (data[index][1] - data[index - 1][1]);
 	}
 	// 分子分母都有 totalWeight，所以消了，因此算式里就没有 totalWeight 出现
-	return deltaYFactorSum / deltaXFactorSum;
+	if (!Number.isFinite(deltaXFactorSum) || Math.abs(deltaXFactorSum) < 0.000001) {
+		return 0;
+	}
+	const value = deltaYFactorSum / deltaXFactorSum;
+	return Number.isFinite(value) ? value : 0;
 }
 
 /**
@@ -68,11 +75,19 @@ function getKbyLWMA(sampleCount: number, data: SingleProgressLog): number {
  * 如果不需要取 currentValue，那么 elapsedTime 可以传任意值
  */
 export function calcDashboard(progressLog: SingleProgressLog, elapsedTime: number) {
+	if (progressLog.length < 2) {
+		const fallback = progressLog[0]?.[1] ?? 0;
+		return { K: 0, B: fallback, currentValue: fallback };
+	}
 	const K = getKbyLWMA(progressLog.length, progressLog);
 	const B = progressLog[progressLog.length - 1][1] - K * progressLog[progressLog.length - 1][0];	// b = y - k * x
 	// const systime = new Date().getTime() / 1000;
 	const currentValue = elapsedTime * K + B;
-	return { K, B, currentValue };
+	return {
+		K: Number.isFinite(K) ? K : 0,
+		B: Number.isFinite(B) ? B : 0,
+		currentValue: Number.isFinite(currentValue) ? currentValue : 0,
+	};
 }
 
 /**
@@ -96,10 +111,11 @@ export function dashboardTimer(task: UITask) {
 	let progress: number;
 	if (task.before[0].duration !== -1) {
 		progress = currentTime / getOutputDuration(task);
-		progress = isNaN(progress) || progress === Infinity || progress < 0 ? 0 : progress;
+		progress = !Number.isFinite(progress) || progress < 0 ? 0 : Math.min(progress, 1);
 	} else {
 		progress = 0;
 	}
+	const currentBitrate = timeK > 0 ? (sizeK / timeK) * 8 : 0;
 
 	// 进度细节计算
 	// const afterFramerate = task.after.outputs[0]?.video.framerate === '不改变' ? task.before[0].vframerate : +task.after.outputs[0]?.video.framerate;
@@ -107,12 +123,12 @@ export function dashboardTimer(task: UITask) {
 		task.dashboard = {
 			...task.dashboard,
 			progress,
-			bitrate: (sizeK / timeK) * 8,
+			bitrate: Number.isFinite(currentBitrate) && currentBitrate > 0 ? currentBitrate : 0,
 			// speed: frameK / afterFramerate || timeK,	// 如果可以读出帧速，或者输出的是视频，用帧速算 speed 更准确；否则用时间算 speed
-			speed: timeK,
-			time: currentTime,
-			frame: currentFrame,
-			size: currentSize,
+			speed: Number.isFinite(timeK) && timeK > 0 ? timeK : 0,
+			time: Number.isFinite(currentTime) && currentTime > 0 ? currentTime : 0,
+			frame: Number.isFinite(currentFrame) && currentFrame > 0 ? currentFrame : 0,
+			size: Number.isFinite(currentSize) && currentSize > 0 ? currentSize : 0,
 		};
 
 		// 平滑处理
@@ -123,11 +139,12 @@ export function dashboardTimer(task: UITask) {
 		time     = time * 0.7 + task.dashboard.time * 0.3;
 		frame    = frame * 0.7 + task.dashboard.frame * 0.3;
 		size    = size * 0.9 + task.dashboard.size * 0.1;
-		if (isNaN(bitrate) || bitrate == Infinity) { bitrate = 0 }
-		if (isNaN(speed)) { speed = 0 }
-		if (isNaN(time)) { time = 0 }
-		if (isNaN(frame)) { frame = 0 }
-		if (isNaN(size)) { size = 0 }
+		if (!Number.isFinite(progress) || progress < 0) { progress = 0 }
+		if (!Number.isFinite(bitrate) || bitrate < 0) { bitrate = 0 }
+		if (!Number.isFinite(speed) || speed < 0) { speed = 0 }
+		if (!Number.isFinite(time) || time < 0) { time = 0 }
+		if (!Number.isFinite(frame) || frame < 0) { frame = 0 }
+		if (!Number.isFinite(size) || size < 0) { size = 0 }
 		task.dashboard_smooth = { ...task.dashboard_smooth, progress, bitrate, speed, time, frame, size };
 	} else {
 		// 进度满了就别更新了

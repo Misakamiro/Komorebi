@@ -9,9 +9,15 @@ import { showAddTaskPrompt, showOpenFilePrompt } from '@renderer/components/misc
 import Popup from '@renderer/components/Popup/Popup';
 import { TaskItem } from './TaskItem/TaskItem';
 import showMenu from '@renderer/components/Menu/Menu';
-import ImageNoffmpeg from './noffmpeg.svg?component';
+import i11n from '@common/i11n/i11n';
+import dropFilesImage from '@renderer/assets/komorebi-guides/drop-files.png';
+import ffmpegGuideImage from '@renderer/assets/komorebi-guides/ffmpeg-guide.png';
 
 const appStore = useAppStore();
+const tr = computed(() => {
+	appStore.frontendSettings.language;
+	return i11n.frontend.ffmpegGuide;
+});
 
 const selectedTask_last = ref(-1);
 const taskListRef = ref<HTMLDivElement>();
@@ -258,31 +264,31 @@ const intersectProps = computed(() => ({ onChange: handleEntry, options: {  } })
 			@mousedown="debugLauncher($event)"
 			@dblclick="nodeBridge.env === 'electron' ? showAddTaskPrompt() : showOpenFilePrompt().then((fileList) => appStore.addTasks(fileList))"
 		>
-			<div class="dropfilesimage" :class="false ? 'imgDragging' : 'imgNormal'" />
+			<img class="dropfilesimage imgNormal" :src="dropFilesImage" alt="" />
 		</div>
 		<div v-if="!appStore.currentServer?.data.ffmpegInfo.version && appStore.currentServer?.data.ffmpegInfo.scanning" class="noffmpeg">
 			<div class="box">
-				<ImageNoffmpeg />
+				<img class="guideImage" :src="ffmpegGuideImage" alt="" />
 				<div class="right">
-					<h2>正在检测 FFmpeg</h2>
-					<p class="smallTip">正在读取安装包内置的 FFmpeg，请稍候。</p>
+					<h2>{{ tr.checkingTitle }}</h2>
+					<p class="smallTip">{{ tr.checkingText }}</p>
 				</div>
 			</div>
 		</div>
 		<div v-else-if="!appStore.currentServer?.data.ffmpegInfo.version" class="noffmpeg">
 			<div class="box">
-				<ImageNoffmpeg />
+				<img class="guideImage" :src="ffmpegGuideImage" alt="" />
 				<div class="right">
-					<h2>FFmpeg 依赖缺失</h2>
-					<p class="smallTip">请按以下步骤解决问题：</p>
+					<h2>{{ tr.missingTitle }}</h2>
+					<p class="smallTip">{{ tr.missingTip }}</p>
 					<div style="height: 12px" />
-					<p>1. 在<a @click="handleDownloadFFmpegClicked"> FFmpeg 官网</a>下载适用于 <span>{{ appStore.currentServer.data.os || '对应操作系统' }}</span> 的程序</p>
-					<p v-if="['Windows', 'unknown'].includes(appStore.currentServer.data.os)">　　2.1. 选择一：将 ffmpeg 可执行文件所在路径放至于环境变量中</p>
-					<p v-if="['MacOS', 'Linux'].includes(appStore.currentServer.data.os)">　　2.1. 选择一：将 ffmpeg 可执行文件放入 /usr/local/bin</p>
-					<p v-if="['Windows', 'Linux', 'unknown'].includes(appStore.currentServer.data.os)">　　2.2. 选择二：将 ffmpeg 可执行文件放入 Komorebi 可执行程序相同目录</p>
-					<p v-if="appStore.currentServer.data.os === 'MacOS'">　　2.2. 选择二：将 ffmpeg 可执行文件放入 {{ appStore.currentServer.data.isSandboxed ? 'Komorebi.app/Contents/Resources' : 'KomorebiService 可执行程序相同目录' }}</p>
+					<p>1. <a @click="handleDownloadFFmpegClicked">FFmpeg</a> {{ tr.stepDownload }} <span>{{ appStore.currentServer.data.os || tr.currentOs }}</span></p>
+					<p v-if="['Windows', 'unknown'].includes(appStore.currentServer.data.os)">　　2.1. {{ tr.stepWindowsPath }}</p>
+					<p v-if="['MacOS', 'Linux'].includes(appStore.currentServer.data.os)">　　2.1. {{ tr.stepUnixPath }}</p>
+					<p v-if="['Windows', 'Linux', 'unknown'].includes(appStore.currentServer.data.os)">　　2.2. {{ tr.stepSameDir }}</p>
+					<p v-if="appStore.currentServer.data.os === 'MacOS'">　　2.2. {{ tr.stepMacDir(appStore.currentServer.data.isSandboxed ? 'Komorebi.app/Contents/Resources' : 'KomorebiService executable directory') }}</p>
 					<div style="height: 4px" />
-					<p>完成以上操作后，重启{{ appStore.currentServer.entity.ip === 'localhost' ? '本软件' : ' KomorebiService ' }}即可开始使用</p>
+					<p>{{ tr.restart(appStore.currentServer.entity.ip === 'localhost' ? 'Komorebi' : 'KomorebiService') }}</p>
 					<div style="height: 12px" />
 				</div>
 			</div>
@@ -323,20 +329,25 @@ const intersectProps = computed(() => ({ onChange: handleEntry, options: {  } })
 			min-height: 80px;
 			flex-grow: 1;
 			.dropfilesimage {
-				background-size: contain;
-				background-position: center;
-				background-repeat: no-repeat;
 				margin: auto;
 				width: 100%;
 				max-height: 200px;
 				height: 100%;
+				object-fit: contain;
+				opacity: 0.9;
+				filter: drop-shadow(0 8px 14px hwb(var(--hoverShadow) / 0.08));
+				transform: translateY(0) scale(1);
+				transition: transform 0.18s ease, opacity 0.18s ease, filter 0.18s ease;
+				will-change: transform, opacity;
 			}
-			.imgNormal {
-				background-image: url(./drop_files.svg);
+			&:hover .dropfilesimage {
+				opacity: 1;
+				transform: translateY(-2px) scale(1.015);
+				filter: drop-shadow(0 12px 20px hwb(var(--hoverShadow) / 0.12));
 			}
-			// .imgDragging {
-			// 	background-image: url(./drop_files_ok.svg);
-			// }
+			.imgDragging {
+				transform: translateY(-4px) scale(1.03);
+			}
 		}
 		.noffmpeg {
 			position: absolute;
@@ -363,15 +374,22 @@ const intersectProps = computed(() => ({ onChange: handleEntry, options: {  } })
 				@media only screen and (max-width: 760px) {
 					width: 660px;
 				}
-				svg {
+				.guideImage {
 					width: 120px;
 					height: auto;
 					padding-right: 24px;
-					transition: all 0.3s ease-in-out;
+					object-fit: contain;
+					filter: drop-shadow(0 8px 16px hwb(var(--hoverShadow) / 0.1));
+					transition: width 0.3s ease-in-out, padding-right 0.3s ease-in-out, transform 0.2s ease, filter 0.2s ease;
+					will-change: transform;
 					@media only screen and (max-width: 680px) {
 						width: 0;
 						padding-right: 0;
 					}
+				}
+				&:hover .guideImage {
+					transform: translateY(-2px);
+					filter: drop-shadow(0 12px 20px hwb(var(--hoverShadow) / 0.14));
 				}
 				.right {
 					padding: 0 12px;

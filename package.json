@@ -1,6 +1,6 @@
 {
   "name": "komorebi",
-  "version": "5.3.0-alpha",
+  "version": "5.3.0-alpha.1",
   "private": true,
   "description": "Komorebi Windows desktop media converter",
   "main": "app/main/index.cjs",
@@ -11,7 +11,8 @@
     "build:backend": "node scripts/build-backend.mjs",
     "pkg:backend:win": "pkg --config ./config/pkg.win.config.json ./app/backend/index.cjs",
     "package": "electron-builder",
-    "build:everything": "node scripts/build-frontend.mjs && node scripts/build-backend.mjs && pkg --config ./config/pkg.win.config.json ./app/backend/index.cjs && electron-builder"
+    "typecheck": "tsc --noEmit",
+    "build:everything": "node scripts/build-frontend.mjs && node scripts/build-backend.mjs && electron-builder"
   },
   "author": {
     "name": "Komorebi contributors"

@@ -75,7 +75,7 @@ const handleKeyup = (event: KeyboardEvent) => {
 			v-if="props.checked !== undefined"
 			ref="slipperRef"
 			class="checkbox-slipper"
-			:style="props.checked ? 'left: 64px;' : 'left: 0px'"
+			:style="{ transform: props.checked ? 'translateX(64px) scale(1.25)' : 'translateX(0) scale(1.25)' }"
 			@keydown="handleKeydown"
 			@keyup="handleKeyup"
 		/>
@@ -91,6 +91,7 @@ const handleKeyup = (event: KeyboardEvent) => {
 		background: var(--f7);
 		border: #CCC 1px solid;
 		box-shadow: 0px 4px 4px rgba(0, 0, 0, 0.1) inset;
+		transition: background-color 0.18s ease, border-color 0.18s ease;
 	}
 		.checkbox-track-background {
 			position: absolute;
@@ -98,18 +99,19 @@ const handleKeyup = (event: KeyboardEvent) => {
 			border-radius: 24px;
 			background: hsl(210, 85%, 60%);
 			box-shadow: 0px 4px 4px rgba(0, 0, 0, 0.1) inset;
-			transition: all 0.15s ease-out;
+			transition: width 0.18s cubic-bezier(0.2, 0.9, 0.2, 1), background-color 0.18s ease;
 		}
 		.checkbox-slipper {
 			position: absolute;
 			top: 0;
+			left: 0;
 			height: 24px;
 			width: 24px;
 			border-radius: 50%;
 			background: linear-gradient(180deg, #fefefe, #f0f0f0);
 			box-shadow: 0px 1px 3px 0px rgba(0, 0, 0, 0.3);
-			transform: scale(1.25);
-			transition: all 0.15s ease-out;
+			transition: transform 0.18s cubic-bezier(0.2, 0.9, 0.2, 1), background 0.18s ease, box-shadow 0.18s ease;
+			will-change: transform;
 			border: none;
 		}
 		.checkbox-slipper:hover {
@@ -117,6 +119,7 @@ const handleKeyup = (event: KeyboardEvent) => {
 		}
 		.checkbox-slipper:active {
 			background: linear-gradient(180deg, #f0f0f0, #ededed);								
+			box-shadow: 0px 1px 2px 0px rgba(0, 0, 0, 0.35), 0 4px 8px rgba(0, 0, 0, 0.1) inset;
 		}
 
 </style>

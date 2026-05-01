@@ -1,15 +1,21 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import { useAppStore } from '@renderer/stores/appStore';
 import KomorebiNormalView from './KomorebiNormalView.vue';
 import { KomorebiWorkflow } from '@common/komorebiPresets';
+import i11n from '@common/i11n/i11n';
 
 const appStore = useAppStore();
-const workflowButtons: { value: KomorebiWorkflow; label: string }[] = [
-	{ value: 'video-compress', label: '视频压缩' },
-	{ value: 'audio-convert', label: '音频转换' },
-	{ value: 'remux', label: '转封装' },
-	{ value: 'ncm', label: 'NCM转换' },
-];
+const tr = computed(() => {
+	appStore.frontendSettings.language;
+	return i11n.frontend.komorebi;
+});
+const workflowButtons = computed<{ value: KomorebiWorkflow; label: string }[]>(() => [
+	{ value: 'video-compress', label: tr.value.workflows.videoCompress },
+	{ value: 'audio-convert', label: tr.value.workflows.audioConvert },
+	{ value: 'remux', label: tr.value.workflows.remux },
+	{ value: 'ncm', label: tr.value.workflows.ncm },
+]);
 </script>
 
 <template>
@@ -24,7 +30,7 @@ const workflowButtons: { value: KomorebiWorkflow; label: string }[] = [
 				>{{ item.label }}</button>
 			</div>
 		</div>
-		<Transition name="workflowPanel" mode="out-in">
+		<Transition name="workflowPanel">
 			<KomorebiNormalView :key="appStore.komorebi.workflow" />
 		</Transition>
 	</div>
@@ -38,6 +44,7 @@ const workflowButtons: { value: KomorebiWorkflow; label: string }[] = [
 		flex-direction: column;
 		background: transparent;
 		overflow: hidden;
+		position: relative;
 		.komorebiTopbar {
 			height: 36px;
 			flex: 0 0 auto;
@@ -63,32 +70,53 @@ const workflowButtons: { value: KomorebiWorkflow; label: string }[] = [
 					background: transparent;
 					color: var(--66);
 					font-size: 13px;
-					transition: background 0.16s ease, color 0.16s ease;
+					transition: background 0.16s ease, color 0.16s ease, box-shadow 0.16s ease, transform 0.16s cubic-bezier(0.2, 0.9, 0.2, 1);
+					will-change: background, color, transform;
 					&:last-child {
 						border-right: none;
 					}
 					&.active {
 						background: hwb(var(--primaryColor) / 0.12);
 						color: hwb(var(--primaryColor));
+						box-shadow: 0 0 0 1px hwb(var(--primaryColor) / 0.10) inset;
+						transform: translateY(-1px);
 					}
 					&:hover {
 						background: hwb(var(--primaryColor) / 0.08);
 					}
+					&:active {
+						transform: scale(0.98);
+						transition-duration: 0.06s;
+					}
 				}
 			}
 		}
+		.komorebi-normal {
+			flex: 1 1 auto;
+			min-height: 0;
+		}
 		.workflowPanel-enter-active,
 		.workflowPanel-leave-active {
-			transition: opacity 0.14s ease, transform 0.18s cubic-bezier(0.2, 0.9, 0.2, 1);
+			transition: opacity 0.16s ease, transform 0.20s cubic-bezier(0.2, 0.9, 0.2, 1), filter 0.20s ease;
 			will-change: opacity, transform;
+		}
+		.workflowPanel-leave-active {
+			position: absolute;
+			left: 0;
+			right: 0;
+			top: 36px;
+			bottom: 0;
+			pointer-events: none;
 		}
 		.workflowPanel-enter-from {
 			opacity: 0;
-			transform: translateY(3px);
+			transform: translateY(5px) scale(0.997);
+			filter: saturate(0.95);
 		}
 		.workflowPanel-leave-to {
 			opacity: 0;
-			transform: translateY(-2px);
+			transform: translateY(-4px) scale(0.997);
+			filter: saturate(0.95);
 		}
 	}
 </style>
