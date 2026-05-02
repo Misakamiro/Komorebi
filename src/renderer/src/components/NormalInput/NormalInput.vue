@@ -99,7 +99,7 @@ onMounted(() => {
 		background: var(--f7);
 		border: #AAA 1px solid;
 		box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
-		transition: box-shadow 0.2s linear, border 0.2s linear;
+		transition: box-shadow var(--motion-standard) ease, border-color var(--motion-standard) ease, background var(--motion-standard) ease;
 	}
 	.inputbox-selector:hover {
 		background: var(--ff);
@@ -126,7 +126,7 @@ onMounted(() => {
 			font-size: 13px;
 			opacity: 0.1;
 			font-style: italic;
-			transition: opacity 0.15s linear;
+			transition: opacity var(--motion-quick) ease;
 		}
 		.inputbox-selector>input:hover::placeholder {
 			font-size: 13px;

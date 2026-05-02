@@ -499,6 +499,16 @@ function getRouter(): Router {
 		ctx.body = task;
 	});
 
+	router.post('/api/v1/tasks/:id/metadata', optionalAuth, async function (ctx) {
+		const task = ffboxService!.tasklist[+ctx.params.id];
+		if (!task) {
+			ctx.status = 404;
+			ctx.body = { error: 'Task not found' };
+			return;
+		}
+		ctx.body = await ffboxService!.refreshTaskMetadata(+ctx.params.id);
+	});
+
 	/**
 	 * @openapi
 	 * /api/v1/tasks/{id}:

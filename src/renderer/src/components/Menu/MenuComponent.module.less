@@ -16,7 +16,7 @@
         overflow-y: auto;
         background: hwb(0 98% 2%);
         box-shadow: 0px 4px 12px rgba(0, 0, 0, 0.3);
-        animation: menuIn 0.14s cubic-bezier(0.2, 0.9, 0.2, 1);
+        animation: menuIn var(--motion-standard) var(--ease-elegant);
         transform-origin: top left;
         will-change: transform, opacity;
         .menuItem {
@@ -30,7 +30,7 @@
             font-size: 14px;
             line-height: 40px;
             outline: none;
-            transition: background-color 0.12s ease, color 0.12s ease, transform 0.12s cubic-bezier(0.2, 0.9, 0.2, 1);
+            transition: background-color var(--motion-quick) ease, color var(--motion-quick) ease, transform var(--motion-standard) var(--ease-elegant);
             &:nth-last-child(1) {
                 border-bottom: none;
             }

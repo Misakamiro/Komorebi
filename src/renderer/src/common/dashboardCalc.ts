@@ -93,7 +93,40 @@ export function calcDashboard(progressLog: SingleProgressLog, elapsedTime: numbe
 /**
  * 计算单个任务的 timer 函数，根据计算结果原地修改 progress 和 progress_smooth
  */
-export function dashboardTimer(task: UITask) {
+const smoothValue = (current: number, target: number, deltaMs: number, responseMs: number) => {
+	const safeCurrent = Number.isFinite(current) && current >= 0 ? current : 0;
+	const safeTarget = Number.isFinite(target) && target >= 0 ? target : 0;
+	const safeDelta = Number.isFinite(deltaMs) ? Math.min(Math.max(deltaMs, 16), 240) : 50;
+	const alpha = 1 - Math.exp(-safeDelta / responseMs);
+	const value = safeCurrent + (safeTarget - safeCurrent) * alpha;
+	return Number.isFinite(value) && value >= 0 ? value : 0;
+};
+
+const lastFiniteValue = (progressLog: SingleProgressLog) => {
+	for (let i = progressLog.length - 1; i >= 0; i--) {
+		const value = progressLog[i]?.[1];
+		if (Number.isFinite(value) && value >= 0) {
+			return value;
+		}
+	}
+	return 0;
+};
+
+const compactValueLog = (progressLog: SingleProgressLog) => {
+	const compacted: SingleProgressLog = [];
+	for (const [time, value] of progressLog) {
+		if (!Number.isFinite(time) || !Number.isFinite(value) || value < 0) {
+			continue;
+		}
+		const previous = compacted[compacted.length - 1];
+		if (!previous || previous[1] !== value) {
+			compacted.push([time, value]);
+		}
+	}
+	return compacted;
+};
+
+export function dashboardTimer(task: UITask, deltaMs = 200) {
 	const progressLog = task.progressLog;
 	if (progressLog.time.length <= 2) {
 		// 任务刚开始时显示的数据不准确
@@ -103,7 +136,10 @@ export function dashboardTimer(task: UITask) {
 	const elapsedTime = new Date().getTime() / 1000 - progressLog.lastStarted + progressLog.elapsed;
 	const { K: frameK, B: frameB, currentValue: currentFrame } = calcDashboard(progressLog.frame.slice(-5), elapsedTime);
 	const { K: timeK, B: timeB, currentValue: currentTime } = calcDashboard(progressLog.time.slice(-5), elapsedTime);
-	const { K: sizeK, B: sizeB, currentValue: currentSize } = calcDashboard(progressLog.size.slice(-5), elapsedTime);
+	const compactSizeLog = compactValueLog(progressLog.size);
+	const { K: sizeK, B: sizeB, currentValue: estimatedSize } = calcDashboard(compactSizeLog.slice(-5), elapsedTime);
+	const latestSize = lastFiniteValue(progressLog.size);
+	const currentSize = Math.max(latestSize, Number.isFinite(estimatedSize) && estimatedSize > 0 ? estimatedSize : 0);
 	// console.log("frameK: " + frameK + ", timeK: " + timeK + ", sizeK: " + sizeK);
 	// console.log("currentFrame: " + currentFrame + ", currentTime: " + currentTime + ", currentSize: " + currentSize);
 
@@ -115,7 +151,8 @@ export function dashboardTimer(task: UITask) {
 	} else {
 		progress = 0;
 	}
-	const currentBitrate = timeK > 0 ? (sizeK / timeK) * 8 : 0;
+	const averageBitrate = currentTime > 0 && currentSize > 0 ? currentSize * 8 / currentTime : 0;
+	const currentBitrate = timeK > 0 && sizeK > 0 ? (sizeK / timeK) * 8 : averageBitrate;
 
 	// 进度细节计算
 	// const afterFramerate = task.after.outputs[0]?.video.framerate === '不改变' ? task.before[0].vframerate : +task.after.outputs[0]?.video.framerate;
@@ -132,13 +169,13 @@ export function dashboardTimer(task: UITask) {
 		};
 
 		// 平滑处理
-		let { bitrate, speed, time, frame, size } = task.dashboard_smooth;
-		progress = progress * 0.7 + task.dashboard.progress * 0.3;
-		bitrate  = bitrate * 0.9 + task.dashboard.bitrate * 0.1;
-		speed    = speed * 0.6 + task.dashboard.speed * 0.4;
-		time     = time * 0.7 + task.dashboard.time * 0.3;
-		frame    = frame * 0.7 + task.dashboard.frame * 0.3;
-		size    = size * 0.9 + task.dashboard.size * 0.1;
+		let { progress: smoothProgress, bitrate, speed, time, frame, size } = task.dashboard_smooth;
+		progress = smoothValue(smoothProgress, task.dashboard.progress, deltaMs, 260);
+		bitrate  = smoothValue(bitrate, task.dashboard.bitrate, deltaMs, 520);
+		speed    = smoothValue(speed, task.dashboard.speed, deltaMs, 320);
+		time     = smoothValue(time, task.dashboard.time, deltaMs, 180);
+		frame    = smoothValue(frame, task.dashboard.frame, deltaMs, 180);
+		size     = smoothValue(size, task.dashboard.size, deltaMs, 420);
 		if (!Number.isFinite(progress) || progress < 0) { progress = 0 }
 		if (!Number.isFinite(bitrate) || bitrate < 0) { bitrate = 0 }
 		if (!Number.isFinite(speed) || speed < 0) { speed = 0 }

@@ -226,7 +226,7 @@ watch(() => (appStore.currentServer?.data.uploadFiles || []).length, () => {
 			box-shadow: 0px 4px 4px 0px rgba(0, 0, 0, 0.02), // 远距离下阴影
 						0px -2px 1px -1px rgba(0, 0, 0, 0.1) inset; // 内部下阴影
 			overflow: hidden;
-			transition: height 0.4s cubic-bezier(0.2, 1.4, 0.65, 1);
+			transition: height var(--motion-panel) var(--ease-elegant);
 			.devider {
 				cursor: ns-resize;
 				.buttons {
@@ -243,7 +243,7 @@ watch(() => (appStore.currentServer?.data.uploadFiles || []).length, () => {
 						padding: 0 8px;
 						background-color: transparent;
 						border: none;
-						transition: width 0.3s ease;
+						transition: width var(--motion-panel) var(--ease-elegant), background-color var(--motion-standard) ease, box-shadow var(--motion-standard) ease;
 						&:hover {
 							background-color: hwb(var(--hoverLightBg) / 0.5);
 							box-shadow: 0 0 4px 2px hwb(var(--hoverShadow) / 0.05);
@@ -268,7 +268,7 @@ watch(() => (appStore.currentServer?.data.uploadFiles || []).length, () => {
 							letter-spacing: 2px;
 							white-space: nowrap;
 							overflow: hidden;
-							transition: width 0.3s ease, padding 0.3s ease;
+							transition: width var(--motion-panel) var(--ease-elegant), padding var(--motion-panel) var(--ease-elegant);
 							filter: var(--paraBoxButtonDropFilterText);
 						}
 					}
@@ -285,7 +285,7 @@ watch(() => (appStore.currentServer?.data.uploadFiles || []).length, () => {
 					padding: 0;
 					background-color: transparent;
 					border: none;
-					transition: width 0.3s ease;
+					transition: width var(--motion-panel) var(--ease-elegant), background-color var(--motion-standard) ease, box-shadow var(--motion-standard) ease;
 					&:hover {
 						background-color: hwb(var(--hoverLightBg) / 0.5);
 						box-shadow: 0 0 4px 2px hwb(var(--hoverShadow) / 0.05);
@@ -306,14 +306,14 @@ watch(() => (appStore.currentServer?.data.uploadFiles || []).length, () => {
 						white-space: nowrap;
 						overflow: hidden;
 						color: #777;
-						transition: width 0.3s ease, padding 0.3s ease;
+						transition: width var(--motion-panel) var(--ease-elegant), padding var(--motion-panel) var(--ease-elegant);
 						filter: var(--paraBoxButtonDropFilterText);
 					}
 					svg {
 						width: 20px;
 						height: 20px;
 						color: #777;
-						transition: transform 0.4s cubic-bezier(0.2, 1.4, 0.65, 1);
+						transition: transform var(--motion-panel) var(--ease-elegant);
 					}
 					@media only screen and (min-width: 600px) {
 						width: 120px;
@@ -381,7 +381,7 @@ watch(() => (appStore.currentServer?.data.uploadFiles || []).length, () => {
 						font-size: 13px;
 						// overflow: hidden;
 						isolation: isolate;
-						transition: padding 0.3s ease, background-color 0.3s;
+						transition: padding var(--motion-standard) ease, background-color var(--motion-standard) ease;
 						&::after {
 							content: '';
 							position: absolute;
@@ -395,7 +395,7 @@ watch(() => (appStore.currentServer?.data.uploadFiles || []).length, () => {
 							.operations {
 								width: 76px;
 								box-shadow: -14px 0 12px -14px hwb(var(--highlight));
-								transition: box-shadow 0.6s cubic-bezier(0.1, 6, 0.6, 1), width 0.4s cubic-bezier(0.1, 1.6, 0.6, 0.9);
+								transition: box-shadow var(--motion-soft) var(--ease-elegant), width var(--motion-panel) var(--ease-elegant);
 							}
 						}
 						.operations {
@@ -404,7 +404,7 @@ watch(() => (appStore.currentServer?.data.uploadFiles || []).length, () => {
 							white-space: nowrap;
 							border-radius: 8px;
 							box-shadow: -14px 0 12px -16px hwb(var(--highlight) / 0);
-							transition: width 2s cubic-bezier(1, -0.05, 0.8, 0.1);
+							transition: width var(--motion-panel) var(--ease-exit), box-shadow var(--motion-panel) ease;
 							button {
 								flex: 0 0 auto;
 								width: 26px;
@@ -456,7 +456,7 @@ watch(() => (appStore.currentServer?.data.uploadFiles || []).length, () => {
 							z-index: -1;
 							div {
 								height: 100%;
-								transition: width 0.1s linear;
+								transition: width var(--motion-standard) linear;
 								border-radius: 6px;
 							}
 						}
@@ -466,7 +466,7 @@ watch(() => (appStore.currentServer?.data.uploadFiles || []).length, () => {
 						border: hwb(var(--menuItemSelected)) 1px solid;
 					}
 					.listItemMove {
-						transition: all 0.3s ease;
+						transition: opacity var(--motion-standard) ease, transform var(--motion-standard) var(--ease-elegant);
 					}
 					.listItemFromTo {
 						opacity: 0;

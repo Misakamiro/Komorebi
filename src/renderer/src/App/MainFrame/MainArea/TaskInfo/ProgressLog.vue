@@ -26,6 +26,15 @@ let rendering = 0;	// 0: 空闲　1: 渲染中　2: 渲染中重复调用 render
 const outputDuration = computed(() => selectedTasks.value.task ? getOutputDuration(selectedTasks.value.task) : 0);
 const finitePositive = (value: number, fallback = 0) => Number.isFinite(value) && value > 0 ? value : fallback;
 const safeDivide = (a: number, b: number, fallback = 0) => Number.isFinite(a) && Number.isFinite(b) && Math.abs(b) > 0.000001 ? a / b : fallback;
+const lastFiniteValue = (log: Array<[number, number]>) => {
+	for (let i = log.length - 1; i >= 0; i--) {
+		const value = log[i]?.[1];
+		if (Number.isFinite(value) && value >= 0) {
+			return value;
+		}
+	}
+	return 0;
+};
 const isDark = computed(() => appStore.frontendSettings.colorTheme === 'themeDark');
 const selectionList = computed(() => {
 	const disableNormalChart = !selectedTasks.value.task || selectedTasks.value.task?.progressLog.time.length <= 1;
@@ -68,8 +77,11 @@ const bitrateGraphData = computed(() => {
 	let maxYDiff = 0;
 	for (let i = 1; i < logSize.length; i++) {
 		const xDiff = logSize[i][1] - logSize[i - 1][1];	// 两记录点之间的媒体时间差
+		if (!Number.isFinite(xDiff) || xDiff <= 0.001) {
+			continue;
+		}
 		const yDiff = safeDivide(logSize[i][2] - logSize[i - 1][2], xDiff, 0);
-		if (!Number.isFinite(yDiff) || yDiff < 0) {
+		if (!Number.isFinite(yDiff) || yDiff <= 0) {
 			continue;
 		}
 		maxYDiff = yDiff > maxYDiff ? yDiff : maxYDiff;
@@ -85,8 +97,12 @@ const speedGraphData = computed(() => {
 	let maxYDiff = 0;
 	for (let i = 1; i < logTime.length; i++) {
 		const xDiff = logTime[i][1] - logTime[i - 1][1];	// 两记录点之间的媒体时间差
-		const yDiff = safeDivide(xDiff, logTime[i][0] - logTime[i - 1][0], 0);
-		if (!Number.isFinite(yDiff) || yDiff < 0) {
+		const elapsedDiff = logTime[i][0] - logTime[i - 1][0];
+		if (!Number.isFinite(xDiff) || !Number.isFinite(elapsedDiff) || xDiff <= 0.001 || elapsedDiff <= 0.001) {
+			continue;
+		}
+		const yDiff = safeDivide(xDiff, elapsedDiff, 0);
+		if (!Number.isFinite(yDiff) || yDiff <= 0) {
 			continue;
 		}
 		maxYDiff = yDiff > maxYDiff ? yDiff : maxYDiff;
@@ -191,11 +207,14 @@ const getLastSpeedBitrate = () => {
 	const { K: frameK, B: frameB, currentValue: currentFrame } = calcDashboard(progressLog.frame.slice(-5), 0);
 	const { K: timeK, B: timeB, currentValue: currentTime } = calcDashboard(progressLog.time.slice(-5), 0);
 	const { K: sizeK, B: sizeB, currentValue: currentSize } = calcDashboard(dedupProgressLogSize.value.slice(-5).map((value) => [value[1], value[2]]), 0);
+	const latestMediaTime = lastFiniteValue(progressLog.time);
+	const latestSize = lastFiniteValue(progressLog.size);
+	const averageBitrate = latestMediaTime > 0 && latestSize > 0 ? latestSize * 8 / latestMediaTime : 0;
 	// const afterFramerate = after.outputs[0]?.video.framerate === '不改变' ? before.vframerate : +after.outputs[0]?.video.framerate;
 	return {
 		// speed: frameK / afterFramerate || timeK,	// 媒体时间相对真实时间。如果可以读出帧速，或者输出的是视频，用帧速算 speed 更准确；否则用时间算 speed
 		speed: finitePositive(timeK, 0),
-		bitrate: finitePositive(sizeK * 8, 0),	// 尺寸变化相对媒体时间
+		bitrate: finitePositive(sizeK * 8, averageBitrate),	// 尺寸变化相对媒体时间
 	}
 };
 /** 最大时间/尺寸的计算方法是：现在已经累积的转码时长/输出尺寸 + 根据最新速度和剩余任务时长算出的预计增量 */
@@ -204,8 +223,8 @@ const getEstimatedMaxTimeSize = () => {
 	const { progressLog, status } = selectedTasks.value.task;
 	const elapsedTime = progressLog.elapsed + (status === TaskStatus.running ? new Date().getTime() / 1000 - progressLog.lastStarted : 0);
 	// 任务最新进度的时间和大小
-	const currentTime = progressLog.time.length > 0 ? progressLog.time[progressLog.time.length - 1][1] : 0;
-	const currentSize = progressLog.size.length > 0 ? progressLog.size[progressLog.size.length - 1][1] : 0;
+	const currentTime = lastFiniteValue(progressLog.time);
+	const currentSize = lastFiniteValue(progressLog.size);
 	const durationLeft = Math.max(0, finitePositive(outputDuration.value, currentTime) - currentTime);
 	const estimatedTime = lastSpeedBitrate.speed > 0 ? elapsedTime + durationLeft / lastSpeedBitrate.speed : elapsedTime;
 	const estimatedSize = currentSize + durationLeft * lastSpeedBitrate.bitrate * 0.125;	// size 的单位是 kB，bitrate 的单位是 kbps

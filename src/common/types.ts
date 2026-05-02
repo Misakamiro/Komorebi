@@ -55,6 +55,7 @@ export interface FFBoxServiceInterface {
 	setParameters(ids: number[], params: OutputParams[]): Promise<void>;
 	trailLimit_stopTranscoding(id: number, reason: 'media' | 'working', byFrontend?: boolean): Promise<void>;
 	getMediaFrameInfo(id: number, fileIndex: number, videoStreamIndex: number): Promise<void>;
+	refreshTaskMetadata(id: number): Promise<InputInfo[]>;
 }
 
 export interface FFBoxServiceEventParam {

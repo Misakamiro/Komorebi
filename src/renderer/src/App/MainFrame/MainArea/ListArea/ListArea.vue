@@ -318,7 +318,7 @@ const intersectProps = computed(() => ({ onChange: handleEntry, options: {  } })
 				margin-bottom: 0;
 				opacity: 0;
 				transform: translateY(-4px);
-				transition: height 0.16s ease, margin-bottom 0.16s ease, opacity 0.12s linear, transform 0.12s ease;
+				transition: height var(--motion-standard) var(--ease-exit), margin-bottom var(--motion-standard) var(--ease-exit), opacity var(--motion-quick) ease, transform var(--motion-standard) var(--ease-exit);
 			}
 			.tasklistTrans-enter-to, .tasklistTrans-leave-from {
 			}
@@ -337,7 +337,7 @@ const intersectProps = computed(() => ({ onChange: handleEntry, options: {  } })
 				opacity: 0.9;
 				filter: drop-shadow(0 8px 14px hwb(var(--hoverShadow) / 0.08));
 				transform: translateY(0) scale(1);
-				transition: transform 0.18s ease, opacity 0.18s ease, filter 0.18s ease;
+				transition: transform var(--motion-panel) var(--ease-elegant), opacity var(--motion-standard) ease, filter var(--motion-standard) ease;
 				will-change: transform, opacity;
 			}
 			&:hover .dropfilesimage {
@@ -370,7 +370,7 @@ const intersectProps = computed(() => ({ onChange: handleEntry, options: {  } })
 				align-items: center;
 				width: 720px;
 				text-align: left;
-				transition: all 0.3s ease-in-out;
+				transition: width var(--motion-panel) var(--ease-elegant), background-color var(--motion-standard) ease, box-shadow var(--motion-standard) ease;
 				@media only screen and (max-width: 760px) {
 					width: 660px;
 				}
@@ -380,7 +380,7 @@ const intersectProps = computed(() => ({ onChange: handleEntry, options: {  } })
 					padding-right: 24px;
 					object-fit: contain;
 					filter: drop-shadow(0 8px 16px hwb(var(--hoverShadow) / 0.1));
-					transition: width 0.3s ease-in-out, padding-right 0.3s ease-in-out, transform 0.2s ease, filter 0.2s ease;
+					transition: width var(--motion-panel) var(--ease-elegant), padding-right var(--motion-panel) var(--ease-elegant), transform var(--motion-standard) var(--ease-elegant), filter var(--motion-standard) ease;
 					will-change: transform;
 					@media only screen and (max-width: 680px) {
 						width: 0;

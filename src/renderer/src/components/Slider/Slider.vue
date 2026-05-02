@@ -223,7 +223,7 @@ const handleKeypress = (event: KeyboardEvent) => {
 		height: 56px;
 		display: flex;
 		align-items: center;
-		transition: all 0.5s;
+		transition: opacity var(--motion-standard) ease, transform var(--motion-panel) var(--ease-elegant);
 		.slider-module {
 			position: relative;
 			flex-grow: 1;

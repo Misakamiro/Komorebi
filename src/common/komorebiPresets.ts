@@ -1,14 +1,19 @@
 import { defaultParams } from './defaultParams';
-import { joinPathPreserveUnc, normalizeDirectoryPathForKomorebi, normalizeFilesystemPathForKomorebi, stripOuterQuotes } from './filePath';
+import { getPathBaseName, joinPathPreserveUnc, normalizeDirectoryPathForKomorebi, normalizeFilesystemPathForKomorebi, stripOuterQuotes } from './filePath';
 import { InputInfo, NcmTaskParams, OutputParams } from './types';
 
 export type KomorebiWorkflow = 'video-compress' | 'audio-convert' | 'remux' | 'ncm';
 export type KomorebiMode = 'normal';
 export type KomorebiVideoScene = 'anime' | 'screen' | 'live';
-export type KomorebiVideoCodec = 'h264' | 'hevc' | 'av1' | 'vp9' | 'mpeg4';
+export type KomorebiVideoCodec = 'h264' | 'hevc' | 'av1' | 'vp9' | 'mpeg4' | 'gif';
 export type KomorebiQuality = 1 | 2 | 3 | 4;
 export type KomorebiAudioSource = 'source' | 'none' | 'external';
-export type KomorebiVideoContainer = 'mp4' | 'mkv' | 'webm' | 'mov' | 'm4v' | 'flv' | 'ts' | 'avi';
+export type KomorebiVideoContainer = 'mp4' | 'mkv' | 'webm' | 'mov' | 'm4v' | 'flv' | 'ts' | 'avi' | 'gif';
+export type KomorebiVideoAspectRatio = 'source' | '16:9' | '4:3' | '1:1' | '9:16' | '21:9';
+export type KomorebiVideoResolution = 'source' | '480p' | '720p' | '1080p' | '1440p' | '2160p';
+export type KomorebiFrameRate = 'auto' | 5 | 10 | 12 | 15 | 24 | 25 | 30 | 48 | 50 | 60 | 75 | 90 | 100 | 120 | 144 | 165 | 240;
+export type KomorebiGifFps = KomorebiFrameRate;
+export type KomorebiEncodeSpeed = 'fast' | 'balanced' | 'low';
 export type KomorebiAudioFormat = 'mp3' | 'flac' | 'wav' | 'aac' | 'm4a' | 'ogg' | 'wma' | 'opus' | 'ac3' | 'mp2';
 export type KomorebiRemuxContainer = 'mp4' | 'mkv' | 'mov' | 'm4v' | 'webm' | 'flv' | 'avi' | 'ts' | 'wmv' | '3gp';
 
@@ -18,6 +23,12 @@ export interface KomorebiVideoPreset {
 	quality: KomorebiQuality;
 	container: KomorebiVideoContainer;
 	audioSource: KomorebiAudioSource;
+	aspectRatio?: KomorebiVideoAspectRatio;
+	resolution?: KomorebiVideoResolution;
+	frameRate?: KomorebiFrameRate;
+	/** @deprecated Kept for old persisted settings. Use frameRate instead. */
+	gifFps?: KomorebiGifFps;
+	encodeSpeed?: KomorebiEncodeSpeed;
 	externalAudio?: string;
 	outputDir?: string;
 	outputNameTemplate?: string;
@@ -33,6 +44,10 @@ export interface KomorebiAudioPreset {
 export interface KomorebiRemuxPreset {
 	container: KomorebiRemuxContainer;
 	audioSource?: 'source' | 'external';
+	aspectRatio?: KomorebiVideoAspectRatio;
+	resolution?: KomorebiVideoResolution;
+	frameRate?: KomorebiFrameRate;
+	encodeSpeed?: KomorebiEncodeSpeed;
 	externalAudio?: string;
 	outputDir?: string;
 	outputNameTemplate?: string;
@@ -43,6 +58,7 @@ export interface KomorebiMediaHints {
 	hasAudio?: boolean;
 	videoCodec?: string;
 	audioCodec?: string;
+	videoFps?: number;
 }
 
 export const defaultKomorebiVideoPreset: KomorebiVideoPreset = {
@@ -51,6 +67,11 @@ export const defaultKomorebiVideoPreset: KomorebiVideoPreset = {
 	quality: 2,
 	container: 'mp4',
 	audioSource: 'source',
+	aspectRatio: 'source',
+	resolution: 'source',
+	frameRate: 'auto',
+	gifFps: 'auto',
+	encodeSpeed: 'balanced',
 	externalAudio: '',
 	outputDir: '',
 	outputNameTemplate: '',
@@ -66,6 +87,10 @@ export const defaultKomorebiAudioPreset: KomorebiAudioPreset = {
 export const defaultKomorebiRemuxPreset: KomorebiRemuxPreset = {
 	container: 'mp4',
 	audioSource: 'source',
+	aspectRatio: 'source',
+	resolution: 'source',
+	frameRate: 'auto',
+	encodeSpeed: 'balanced',
 	externalAudio: '',
 	outputDir: '',
 	outputNameTemplate: '',
@@ -83,6 +108,352 @@ const audioBitrates: Record<KomorebiQuality, string> = {
 	2: '192k',
 	3: '128k',
 	4: '64k',
+};
+
+const gifProfileDefaults = (quality: KomorebiQuality) => {
+	switch (quality) {
+		case 1:
+			return { fps: 15, width: 480, colors: 96, bayerScale: 4 };
+		case 2:
+			return { fps: 12, width: 360, colors: 64, bayerScale: 5 };
+		case 3:
+			return { fps: 8, width: 280, colors: 48, bayerScale: 5 };
+		case 4:
+		default:
+			return { fps: 6, width: 200, colors: 32, bayerScale: 5 };
+	}
+};
+
+export const komorebiGifMaxFps = 60;
+export const komorebiFrameRateMaxFps = 240;
+
+const roundFps = (fps: number) => Math.round(fps * 1000) / 1000;
+const validFps = (fps?: number) => Number.isFinite(fps) && fps! > 0 ? fps! : undefined;
+const capFps = (fps: number, sourceFps?: number, maxFps = komorebiFrameRateMaxFps) => {
+	const sourceLimit = validFps(sourceFps) ?? maxFps;
+	const capped = Math.min(Math.max(1, fps), sourceLimit, maxFps);
+	return roundFps(capped);
+};
+
+const normalizeKomorebiFrameRateValue = (
+	frameRate: KomorebiFrameRate | string | number | null | undefined,
+	fallback: KomorebiFrameRate = 'auto',
+): KomorebiFrameRate => {
+	if (frameRate === 'auto' || frameRate === undefined || frameRate === null) {
+		return frameRate === 'auto' ? 'auto' : fallback;
+	}
+	const numeric = typeof frameRate === 'number' ? frameRate : Number(frameRate);
+	return komorebiFrameRateOptions.some((item) => item.value === numeric)
+		? numeric as KomorebiFrameRate
+		: fallback;
+};
+
+export const getKomorebiPresetFrameRate = (
+	preset: Pick<KomorebiVideoPreset, 'frameRate' | 'gifFps'> | Pick<KomorebiRemuxPreset, 'frameRate'>,
+): KomorebiFrameRate => normalizeKomorebiFrameRateValue(
+	'frameRate' in preset ? preset.frameRate : undefined,
+	'gifFps' in preset ? normalizeKomorebiFrameRateValue(preset.gifFps, 'auto') : 'auto',
+);
+
+export const getKomorebiEffectiveFrameRate = (
+	frameRate: KomorebiFrameRate | undefined = 'auto',
+	sourceFps?: number,
+	maxFps = komorebiFrameRateMaxFps,
+) => {
+	if (frameRate === 'auto' || frameRate === undefined) {
+		return undefined;
+	}
+	return capFps(Number(frameRate) || maxFps, sourceFps, maxFps);
+};
+
+export const getKomorebiRecommendedFrameRate = (
+	preset: Pick<KomorebiVideoPreset, 'container' | 'quality' | 'frameRate' | 'gifFps'> | Pick<KomorebiRemuxPreset, 'container' | 'frameRate'>,
+	sourceFps?: number,
+	mode: 'video' | 'remux' = 'video',
+) => {
+	const source = validFps(sourceFps);
+	const container = 'container' in preset ? preset.container : undefined;
+	if (container === 'gif') {
+		const quality = 'quality' in preset ? preset.quality : 2;
+		return capFps(gifProfileDefaults(quality || 2).fps, source, komorebiGifMaxFps);
+	}
+	if (!source) {
+		return undefined;
+	}
+	if (mode === 'remux') {
+		return capFps(source, source);
+	}
+	const quality = 'quality' in preset ? preset.quality : 2;
+	const qualityCaps: Record<KomorebiQuality, number> = {
+		1: 120,
+		2: 60,
+		3: 30,
+		4: 24,
+	};
+	const target = Math.min(source, qualityCaps[quality || 2]);
+	return capFps(target, source);
+};
+
+export const getKomorebiEffectiveGifFps = (
+	quality: KomorebiQuality,
+	gifFps: KomorebiGifFps | undefined = 'auto',
+	sourceFps?: number,
+) => {
+	const defaultFps = gifProfileDefaults(quality).fps;
+	const normalizedFps = normalizeKomorebiFrameRateValue(gifFps, 'auto');
+	const requestedFps = normalizedFps === 'auto' || normalizedFps === undefined ? defaultFps : Number(normalizedFps);
+	return capFps(requestedFps || defaultFps, sourceFps, komorebiGifMaxFps);
+};
+
+export const getKomorebiGifEncodeProfile = (
+	quality: KomorebiQuality,
+	gifFps?: KomorebiGifFps,
+	sourceFps?: number,
+) => {
+	const profile = gifProfileDefaults(quality);
+	return {
+		...profile,
+		fps: getKomorebiEffectiveGifFps(quality, gifFps, sourceFps),
+	};
+};
+
+const even = (value: number) => Math.max(2, Math.round(value / 2) * 2);
+
+const aspectRatioValues: Record<Exclude<KomorebiVideoAspectRatio, 'source'>, number> = {
+	'16:9': 16 / 9,
+	'4:3': 4 / 3,
+	'1:1': 1,
+	'9:16': 9 / 16,
+	'21:9': 21 / 9,
+};
+
+const resolutionHeights: Record<Exclude<KomorebiVideoResolution, 'source'>, number> = {
+	'480p': 480,
+	'720p': 720,
+	'1080p': 1080,
+	'1440p': 1440,
+	'2160p': 2160,
+};
+
+export const parseKomorebiResolution = (resolution?: string, fallbackWidth = 1920, fallbackHeight = 1080) => {
+	const fallback = { width: fallbackWidth, height: fallbackHeight };
+	const match = getKomorebiResolutionText(resolution).match(/^(\d{2,5})x(\d{2,5})$/);
+	if (!match) {
+		return fallback;
+	}
+	const width = Number.parseInt(match[1], 10);
+	const height = Number.parseInt(match[2], 10);
+	const ratio = width / height;
+	if (
+		!Number.isFinite(width) ||
+		!Number.isFinite(height) ||
+		width < 16 ||
+		height < 16 ||
+		ratio < 0.2 ||
+		ratio > 5
+	) {
+		return fallback;
+	}
+	return { width, height };
+};
+
+export const getKomorebiResolutionText = (resolution?: string) => {
+	const source = `${resolution || ''}`;
+	const matches = source.matchAll(/(?:^|[^\da-zA-Z])(\d{2,5})\s*x\s*(\d{2,5})(?=$|[^\da-zA-Z])/g);
+	for (const match of matches) {
+		const width = Number.parseInt(match[1], 10);
+		const height = Number.parseInt(match[2], 10);
+		const ratio = width / height;
+		if (
+			Number.isFinite(width) &&
+			Number.isFinite(height) &&
+			width >= 16 &&
+			height >= 16 &&
+			ratio >= 0.2 &&
+			ratio <= 5
+		) {
+			return `${width}x${height}`;
+		}
+	}
+	return '';
+};
+
+export const komorebiVideoAspectRatios: { value: KomorebiVideoAspectRatio; label: string }[] = [
+	{ value: 'source', label: 'Source' },
+	{ value: '16:9', label: '16:9' },
+	{ value: '4:3', label: '4:3' },
+	{ value: '1:1', label: '1:1' },
+	{ value: '9:16', label: '9:16' },
+	{ value: '21:9', label: '21:9' },
+];
+
+export const komorebiVideoResolutions: { value: KomorebiVideoResolution; label: string }[] = [
+	{ value: 'source', label: 'Source' },
+	{ value: '480p', label: '480p' },
+	{ value: '720p', label: '720p' },
+	{ value: '1080p', label: '1080p' },
+	{ value: '1440p', label: '1440p' },
+	{ value: '2160p', label: '2160p' },
+];
+
+export const komorebiFrameRateOptions: { value: KomorebiFrameRate; label: string }[] = [
+	{ value: 'auto', label: 'Auto' },
+	{ value: 5, label: '5 FPS' },
+	{ value: 10, label: '10 FPS' },
+	{ value: 12, label: '12 FPS' },
+	{ value: 15, label: '15 FPS' },
+	{ value: 24, label: '24 FPS' },
+	{ value: 25, label: '25 FPS' },
+	{ value: 30, label: '30 FPS' },
+	{ value: 48, label: '48 FPS' },
+	{ value: 50, label: '50 FPS' },
+	{ value: 60, label: '60 FPS' },
+	{ value: 75, label: '75 FPS' },
+	{ value: 90, label: '90 FPS' },
+	{ value: 100, label: '100 FPS' },
+	{ value: 120, label: '120 FPS' },
+	{ value: 144, label: '144 FPS' },
+	{ value: 165, label: '165 FPS' },
+	{ value: 240, label: '240 FPS' },
+];
+
+export const komorebiGifFpsOptions = komorebiFrameRateOptions;
+
+export const komorebiEncodeSpeeds: { value: KomorebiEncodeSpeed; label: string }[] = [
+	{ value: 'fast', label: 'Fast' },
+	{ value: 'balanced', label: 'Balanced' },
+	{ value: 'low', label: 'Low usage' },
+];
+
+export const getKomorebiResolutionOptions = (
+	aspectRatio: KomorebiVideoAspectRatio = 'source',
+	sourceWidth = 1920,
+	sourceHeight = 1080,
+	sourceLabel = 'Source',
+) => komorebiVideoResolutions.map((item) => {
+	if (item.value === 'source') {
+		return { ...item, label: sourceLabel };
+	}
+	const { width, height } = getKomorebiOutputDimensions(
+		sourceWidth,
+		sourceHeight,
+		{ aspectRatio, resolution: item.value, quality: 2 },
+		'video',
+	);
+	return {
+		...item,
+		label: `${width}x${height}`,
+	};
+});
+
+export const getKomorebiOutputDimensions = (
+	sourceWidth: number,
+	sourceHeight: number,
+	preset: Pick<KomorebiVideoPreset, 'aspectRatio' | 'resolution' | 'quality'>,
+	mode: 'video' | 'gif' = 'video',
+) => {
+	const safeWidth = Number.isFinite(sourceWidth) && sourceWidth > 0 ? sourceWidth : 1920;
+	const safeHeight = Number.isFinite(sourceHeight) && sourceHeight > 0 ? sourceHeight : 1080;
+	const aspectRatio = preset.aspectRatio || 'source';
+	const resolution = preset.resolution || 'source';
+	const rawSourceRatio = safeWidth / safeHeight;
+	const sourceRatio = Number.isFinite(rawSourceRatio) && rawSourceRatio >= 0.2 && rawSourceRatio <= 5
+		? rawSourceRatio
+		: 16 / 9;
+	const targetRatio = aspectRatio === 'source' ? sourceRatio : aspectRatioValues[aspectRatio];
+
+	if (mode === 'gif' && resolution === 'source') {
+		const profile = getKomorebiGifEncodeProfile(preset.quality || 2);
+		const targetWidth = Math.min(safeWidth, profile.width);
+		const targetHeight = aspectRatio === 'source' ? targetWidth / sourceRatio : targetWidth / targetRatio;
+		return { width: even(targetWidth), height: even(targetHeight) };
+	}
+
+	if (resolution === 'source') {
+		const targetHeight = safeHeight;
+		const targetWidth = aspectRatio === 'source' ? safeWidth : targetHeight * targetRatio;
+		return { width: even(targetWidth), height: even(targetHeight) };
+	}
+
+	const targetHeight = resolutionHeights[resolution];
+	return { width: even(targetHeight * targetRatio), height: even(targetHeight) };
+};
+
+const getKomorebiScaleFlags = (speed?: KomorebiEncodeSpeed) => {
+	if (speed === 'fast') {
+		return 'fast_bilinear';
+	}
+	if (speed === 'low') {
+		return 'bilinear';
+	}
+	return 'bicubic';
+};
+
+export const getKomorebiVideoTransformFilter = (preset: Pick<KomorebiVideoPreset, 'aspectRatio' | 'resolution' | 'encodeSpeed'>) => {
+	const aspectRatio = preset.aspectRatio || 'source';
+	const resolution = preset.resolution || 'source';
+	const scaleFlags = getKomorebiScaleFlags(preset.encodeSpeed);
+	if (aspectRatio === 'source' && resolution === 'source') {
+		return '';
+	}
+	if (aspectRatio === 'source') {
+		const height = resolutionHeights[resolution as Exclude<KomorebiVideoResolution, 'source'>];
+		if (!height) {
+			return '';
+		}
+		return `scale=-2:${height}:flags=${scaleFlags}`;
+	}
+	const ratio = aspectRatioValues[aspectRatio];
+	if (!ratio) {
+		return '';
+	}
+	if (resolution === 'source') {
+		return `pad=w='ceil(max(iw,ih*${ratio})/2)*2':h='ceil(max(ih,iw/${ratio})/2)*2':x='(ow-iw)/2':y='(oh-ih)/2':color=black,setsar=1`;
+	}
+	const { width, height } = getKomorebiOutputDimensions(1920, 1080, { ...preset, quality: 2 } as KomorebiVideoPreset, 'video');
+	return `scale=${width}:${height}:force_original_aspect_ratio=decrease:force_divisible_by=2:flags=${scaleFlags},pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1`;
+};
+
+const joinKomorebiVideoFilters = (...filters: Array<string | undefined>) => filters.filter(Boolean).join(',');
+
+export const getKomorebiVideoFilter = (
+	preset: Pick<KomorebiVideoPreset, 'container' | 'quality' | 'aspectRatio' | 'resolution' | 'frameRate' | 'gifFps' | 'encodeSpeed'>,
+	sourceFps?: number,
+	mode: 'video' | 'remux' = 'video',
+) => {
+	const frameRate = getKomorebiPresetFrameRate(preset);
+	const recommendedFps = mode === 'remux' ? undefined : getKomorebiRecommendedFrameRate(preset, sourceFps, mode);
+	const fps = frameRate === 'auto' ? recommendedFps : getKomorebiEffectiveFrameRate(frameRate, sourceFps);
+	return joinKomorebiVideoFilters(
+		fps ? `fps=${fps}` : '',
+		getKomorebiVideoTransformFilter(preset),
+	);
+};
+
+const getKomorebiGifTransformFilter = (preset: KomorebiVideoPreset, sourceFps?: number) => {
+	const profile = getKomorebiGifEncodeProfile(preset.quality, getKomorebiPresetFrameRate(preset), sourceFps);
+	const aspectRatio = preset.aspectRatio || 'source';
+	const resolution = preset.resolution || 'source';
+	const scaleFlags = getKomorebiScaleFlags(preset.encodeSpeed);
+	if (aspectRatio === 'source' && resolution === 'source') {
+		return `scale='min(${profile.width},iw)':-2:flags=${scaleFlags}`;
+	}
+	if (aspectRatio === 'source') {
+		const height = resolutionHeights[resolution as Exclude<KomorebiVideoResolution, 'source'>];
+		if (!height) {
+			return `scale='min(${profile.width},iw)':-2:flags=${scaleFlags}`;
+		}
+		return `scale=-2:${height}:flags=${scaleFlags}`;
+	}
+	const { width, height } = getKomorebiOutputDimensions(1920, 1080, preset, 'gif');
+	return `scale=${width}:${height}:force_original_aspect_ratio=decrease:force_divisible_by=2:flags=${scaleFlags},pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1`;
+};
+
+export const getKomorebiGifFilter = (quality: KomorebiQuality, progressProbe = false, preset?: KomorebiVideoPreset, sourceFps?: number) => {
+	const profile = getKomorebiGifEncodeProfile(quality, preset ? getKomorebiPresetFrameRate(preset) : undefined, sourceFps);
+	const probe = progressProbe ? ',showinfo' : '';
+	const transform = preset ? getKomorebiGifTransformFilter(preset, sourceFps) : `scale='min(${profile.width},iw)':-2:flags=lanczos`;
+	return `[0:v]fps=${profile.fps},${transform}${probe}[gifout]`;
 };
 
 const sceneParams = {
@@ -151,6 +522,7 @@ const mapContainer = (container: string) => {
 		case 'm4v': return 'm4v (mp4)';
 		case 'ts': return 'ts (mpegts)';
 		case 'wmv': return 'wmv (asf)';
+		case 'gif': return 'gif';
 		default: return container;
 	}
 };
@@ -164,6 +536,7 @@ export const komorebiVideoContainers: { value: KomorebiVideoContainer; label: st
 	{ value: 'flv', label: 'FLV' },
 	{ value: 'ts', label: 'TS' },
 	{ value: 'avi', label: 'AVI' },
+	{ value: 'gif', label: 'GIF' },
 ];
 
 export const komorebiAudioFormats: { value: KomorebiAudioFormat; label: string }[] = [
@@ -207,9 +580,28 @@ export const komorebiNcmFormats: { value: NonNullable<NcmTaskParams['targetForma
 ];
 
 export function normalizeKomorebiVideoPreset(preset: KomorebiVideoPreset): KomorebiVideoPreset {
-	const normalized = { ...preset };
-	if (normalized.container === 'webm' && !['av1', 'vp9'].includes(normalized.codec)) {
+	const normalized = { ...defaultKomorebiVideoPreset, ...preset };
+	if (!komorebiVideoAspectRatios.some((item) => item.value === normalized.aspectRatio)) {
+		normalized.aspectRatio = 'source';
+	}
+	if (!komorebiVideoResolutions.some((item) => item.value === normalized.resolution)) {
+		normalized.resolution = 'source';
+	}
+	normalized.frameRate = normalizeKomorebiFrameRateValue(
+		normalized.frameRate,
+		normalizeKomorebiFrameRateValue(normalized.gifFps, defaultKomorebiVideoPreset.frameRate || 'auto'),
+	);
+	normalized.gifFps = normalized.frameRate;
+	if (!komorebiEncodeSpeeds.some((item) => item.value === normalized.encodeSpeed)) {
+		normalized.encodeSpeed = defaultKomorebiVideoPreset.encodeSpeed;
+	}
+	if (normalized.container === 'gif') {
+		normalized.codec = 'gif';
+		normalized.audioSource = 'none';
+	} else if (normalized.container === 'webm' && !['av1', 'vp9'].includes(normalized.codec)) {
 		normalized.codec = 'av1';
+	} else if (normalized.codec === 'gif') {
+		normalized.codec = 'h264';
 	} else if (normalized.container === 'flv') {
 		normalized.codec = 'h264';
 	} else if (normalized.container === 'avi') {
@@ -220,8 +612,26 @@ export function normalizeKomorebiVideoPreset(preset: KomorebiVideoPreset): Komor
 	return normalized;
 }
 
+export function normalizeKomorebiRemuxPreset(preset: KomorebiRemuxPreset): KomorebiRemuxPreset {
+	const normalized = { ...defaultKomorebiRemuxPreset, ...preset };
+	if (!komorebiRemuxContainers.some((item) => item.value === normalized.container)) {
+		normalized.container = defaultKomorebiRemuxPreset.container;
+	}
+	if (!komorebiVideoAspectRatios.some((item) => item.value === normalized.aspectRatio)) {
+		normalized.aspectRatio = 'source';
+	}
+	if (!komorebiVideoResolutions.some((item) => item.value === normalized.resolution)) {
+		normalized.resolution = 'source';
+	}
+	normalized.frameRate = normalizeKomorebiFrameRateValue(normalized.frameRate, defaultKomorebiRemuxPreset.frameRate || 'auto');
+	if (!komorebiEncodeSpeeds.some((item) => item.value === normalized.encodeSpeed)) {
+		normalized.encodeSpeed = defaultKomorebiRemuxPreset.encodeSpeed;
+	}
+	return normalized;
+}
+
 export function normalizeKomorebiRemuxContainer(container: KomorebiRemuxContainer): KomorebiRemuxContainer {
-	return container;
+	return normalizeKomorebiRemuxPreset({ container }).container;
 }
 
 export function buildKomorebiVideoParams(inputs: string[], preset: KomorebiVideoPreset): OutputParams {
@@ -234,13 +644,16 @@ export function buildKomorebiVideoParams(inputs: string[], preset: KomorebiVideo
 
 	const output = params.outputs[0];
 	const crf = qualityCrf[actualPreset.quality];
+	const gifFilter = getKomorebiGifFilter(actualPreset.quality, false, actualPreset);
 	const codec = actualPreset.codec === 'h264' ? 'libx264'
 		: actualPreset.codec === 'hevc' ? 'libx265'
 			: actualPreset.codec === 'vp9' ? 'libvpx-vp9'
 				: actualPreset.codec === 'mpeg4' ? 'mpeg4'
-					: 'libsvtav1';
+					: actualPreset.codec === 'gif' ? 'gif'
+						: 'libsvtav1';
 	const scene = sceneParams[actualPreset.scene];
 	const highQuality = actualPreset.quality === 1 || actualPreset.quality === 2;
+	const videoFilter = getKomorebiVideoFilter(actualPreset);
 	const maps = (() => {
 		if (actualPreset.audioSource === 'none') {
 			return ['-map', '0:v'];
@@ -269,14 +682,14 @@ export function buildKomorebiVideoParams(inputs: string[], preset: KomorebiVideo
 	output.video = {
 		vcodec: codec,
 		resolution: '不改变',
-		framerate: '不改变',
+		framerate: actualPreset.frameRate === 'auto' ? '不改变' : `${actualPreset.frameRate}`,
 		ratecontrol: 'CRF',
 		ratevalue: crf,
 		detail: {},
-		custom: [...maps, ...codecTuning].join(' '),
+		custom: actualPreset.container === 'gif' ? `-filter_complex "${gifFilter}" -map [gifout] -an -gifflags +offsetting+transdiff -loop 0` : [...maps, ...(videoFilter ? ['-vf', videoFilter] : []), ...codecTuning].join(' '),
 	};
 	output.audio = {
-		acodec: actualPreset.audioSource === 'none' ? '禁用' : ['av1', 'vp9'].includes(actualPreset.codec) || actualPreset.container === 'webm' ? 'libopus' : 'aac',
+		acodec: actualPreset.audioSource === 'none' || actualPreset.container === 'gif' ? '禁用' : ['av1', 'vp9'].includes(actualPreset.codec) || actualPreset.container === 'webm' ? 'libopus' : 'aac',
 		ratecontrol: undefined,
 		ratevalue: undefined,
 		vol: 0,
@@ -357,18 +770,20 @@ export function buildKomorebiAudioParams(inputs: string[], preset: KomorebiAudio
 }
 
 export function buildKomorebiRemuxParams(inputs: string[], preset: KomorebiRemuxPreset): OutputParams {
+	const actualPreset = normalizeKomorebiRemuxPreset(preset);
 	const params = cloneDefaultParams();
 	ensureInputFiles(params, inputs.slice(0, 1));
-	if (preset.audioSource === 'external' && preset.externalAudio?.trim()) {
-		params.input.files.push(...inputFiles([preset.externalAudio]));
+	if (actualPreset.audioSource === 'external' && actualPreset.externalAudio?.trim()) {
+		params.input.files.push(...inputFiles([actualPreset.externalAudio]));
 	}
 	const output = params.outputs[0];
+	const hasVideoTransform = actualPreset.aspectRatio !== 'source' || actualPreset.resolution !== 'source' || actualPreset.frameRate !== 'auto';
 	output.video = {
-		vcodec: 'copy',
+		vcodec: hasVideoTransform ? 'libx264' : 'copy',
 		resolution: '不改变',
-		framerate: '不改变',
+		framerate: actualPreset.frameRate === 'auto' ? '不改变' : `${actualPreset.frameRate}`,
 		detail: {},
-		custom: '-map 0 -c:s copy',
+		custom: hasVideoTransform ? '-map 0 -c:s copy -preset medium -pix_fmt yuv420p' : '-map 0 -c:s copy',
 	};
 	output.audio = {
 		acodec: 'copy',
@@ -376,9 +791,9 @@ export function buildKomorebiRemuxParams(inputs: string[], preset: KomorebiRemux
 		detail: {},
 	};
 	output.mux = {
-		format: mapContainer(preset.container),
-		moveflags: ['mp4', 'm4v', 'mov'].includes(preset.container),
-		filePath: outputPattern(preset.outputDir, 'remux', preset.outputNameTemplate),
+		format: mapContainer(actualPreset.container),
+		moveflags: ['mp4', 'm4v', 'mov'].includes(actualPreset.container),
+		filePath: outputPattern(actualPreset.outputDir, 'remux', actualPreset.outputNameTemplate),
 		begin: '',
 		end: '',
 		detail: {},
@@ -387,7 +802,7 @@ export function buildKomorebiRemuxParams(inputs: string[], preset: KomorebiRemux
 	params.extra = {
 		presetName: 'Komorebi 转封装',
 		komorebiWorkflow: 'remux',
-		komorebiPreset: { ...preset, outputDir: normalizeDirectoryPathForKomorebi(preset.outputDir), outputNameTemplate: stripOuterQuotes(preset.outputNameTemplate) },
+		komorebiPreset: { ...actualPreset, outputDir: normalizeDirectoryPathForKomorebi(actualPreset.outputDir), outputNameTemplate: stripOuterQuotes(actualPreset.outputNameTemplate) },
 		komorebiRemuxFallback: true,
 	};
 	return params;
@@ -440,14 +855,24 @@ const targetEncoder = (codec: KomorebiVideoCodec, encoderNames: string[], forceC
 };
 
 const appendVideoEncoderArgs = (args: string[], preset: KomorebiVideoPreset, encoderNames: string[], forceCpu = false) => {
-	const codec = preset.container === 'webm' ? 'av1' : preset.codec;
+	const codec = preset.codec;
 	const crf = `${qualityCrf[preset.quality]}`;
 	const scene = sceneParams[preset.scene];
 	const highQuality = preset.quality === 1 || preset.quality === 2;
 	const encoder = targetEncoder(codec, encoderNames, forceCpu);
+	const speed = preset.encodeSpeed || 'balanced';
+	const nvencPreset = speed === 'fast' ? 'p1' : speed === 'low' ? (highQuality ? 'p5' : 'p4') : (highQuality ? scene.hwPresetHigh : scene.hwPresetLow);
+	const qsvPreset = speed === 'fast' ? 'veryfast' : speed === 'low' ? 'medium' : 'slower';
+	const svtPreset = speed === 'fast' ? '5' : speed === 'low' ? '8' : '6';
+	const vp9CpuUsed = speed === 'fast' ? '5' : speed === 'low' ? '4' : '2';
+	const cpuPreset = speed === 'fast' ? 'veryfast' : speed === 'low' ? 'fast' : 'medium';
+	const amfQuality = speed === 'fast' ? 'speed' : speed === 'low' ? 'quality' : 'balanced';
 
 	if (encoder.endsWith('_nvenc')) {
-		args.push('-c:v', encoder, '-preset', highQuality ? scene.hwPresetHigh : scene.hwPresetLow, '-rc', 'vbr', '-cq', crf);
+		args.push('-c:v', encoder, '-preset', nvencPreset, '-rc', 'vbr', '-cq', crf);
+		if (speed === 'fast') {
+			args.push('-multipass', 'disabled');
+		}
 		if (preset.scene === 'anime') {
 			args.push('-spatial-aq', '1', '-tune', 'hq', '-bf', '3');
 		} else if (preset.scene === 'screen') {
@@ -456,23 +881,27 @@ const appendVideoEncoderArgs = (args: string[], preset: KomorebiVideoPreset, enc
 			args.push('-spatial-aq', '1', '-temporal-aq', '1', '-tune', 'hq', '-bf', '3');
 		}
 	} else if (encoder.endsWith('_qsv')) {
-		args.push('-c:v', encoder, '-preset', 'slower', '-global_quality', crf, '-look_ahead', '1');
+		args.push('-c:v', encoder, '-preset', qsvPreset, '-global_quality', crf);
+		if (speed !== 'fast') {
+			args.push('-look_ahead', '1');
+		}
 	} else if (encoder.endsWith('_amf')) {
 		args.push('-c:v', encoder, '-rc', 'cqp', '-qp_i', crf, '-qp_p', crf, '-qp_b', crf);
+		args.push('-quality', amfQuality);
 	} else if (codec === 'av1') {
-		args.push('-c:v', 'libsvtav1', '-preset', '6', '-crf', crf, '-svtav1-params', highQuality ? scene.svtHigh : scene.svtLow);
+		args.push('-c:v', 'libsvtav1', '-preset', svtPreset, '-crf', crf, '-svtav1-params', highQuality ? scene.svtHigh : scene.svtLow);
 	} else if (codec === 'vp9') {
-		args.push('-c:v', 'libvpx-vp9', '-b:v', '0', '-crf', crf, '-deadline', 'good', '-cpu-used', '2');
+		args.push('-c:v', 'libvpx-vp9', '-b:v', '0', '-crf', crf, '-deadline', 'good', '-cpu-used', vp9CpuUsed);
 	} else if (codec === 'mpeg4') {
 		args.push('-c:v', 'mpeg4', '-q:v', highQuality ? '3' : '5');
 	} else if (codec === 'hevc') {
-		args.push('-c:v', 'libx265', '-pix_fmt', 'yuv420p10le', '-preset', 'medium', '-crf', crf);
+		args.push('-c:v', 'libx265', '-pix_fmt', 'yuv420p10le', '-preset', cpuPreset, '-crf', crf);
 		if (preset.scene === 'anime') {
 			args.push('-tune', 'animation');
 		}
 		args.push('-x265-params', highQuality ? scene.x265High : scene.x265Low);
 	} else {
-		args.push('-c:v', 'libx264', '-preset', 'medium', '-crf', crf, '-tune', preset.scene === 'anime' ? 'animation' : 'film', '-pix_fmt', 'yuv420p');
+		args.push('-c:v', 'libx264', '-preset', cpuPreset, '-crf', crf, '-tune', preset.scene === 'anime' ? 'animation' : 'film', '-pix_fmt', 'yuv420p');
 	}
 };
 
@@ -497,6 +926,25 @@ const appendAudioEncoderArgs = (args: string[], format: KomorebiAudioPreset['for
 	} else {
 		args.push('-c:a', 'aac', '-b:a', bitrate);
 	}
+};
+
+const getKomorebiGifThreadCount = (speed: KomorebiEncodeSpeed | undefined) => {
+	if (speed === 'fast') {
+		return undefined;
+	}
+	if (speed === 'low') {
+		return '1';
+	}
+	return '2';
+};
+
+const resolveKomorebiInputPath = (filePath: string, inputDir?: string) => {
+	const normalized = normalizeFilesystemPathForKomorebi(filePath);
+	if (!inputDir) {
+		return normalized;
+	}
+	const normalizedDir = inputDir.replace(/[\\/]$/, '');
+	return `${normalizedDir}/${getPathBaseName(normalized) || normalized}`;
 };
 
 export function getKomorebiMediaHints(inputInfo?: InputInfo): KomorebiMediaHints {
@@ -530,6 +978,7 @@ export function getKomorebiMediaHints(inputInfo?: InputInfo): KomorebiMediaHints
 		hasAudio: !!audioStream,
 		videoCodec: normalizeCodec(videoStream?.codec),
 		audioCodec: normalizeCodec(audioStream?.codec),
+		videoFps: Number.isFinite(videoStream?.fps) && videoStream!.fps! > 0 ? videoStream!.fps : undefined,
 	};
 }
 
@@ -578,6 +1027,12 @@ export function isKomorebiVideoCodecAvailable(codec: KomorebiVideoCodec, contain
 	if (container === 'webm') {
 		return codec === 'av1' || codec === 'vp9';
 	}
+	if (container === 'gif') {
+		return codec === 'gif';
+	}
+	if (codec === 'gif') {
+		return false;
+	}
 	if (container === 'flv') {
 		return codec === 'h264';
 	}
@@ -607,13 +1062,13 @@ export function isKomorebiRemuxContainerAvailable(container: KomorebiRemuxContai
 	return shouldKomorebiRemuxTranscode(container, hints) === false;
 }
 
-export function buildKomorebiFFmpegArgs(outputParams: OutputParams, outputFile: string, encoderNames: string[] = [], forceCpu = false, mediaHints?: KomorebiMediaHints): string[] | undefined {
+export function buildKomorebiFFmpegArgs(outputParams: OutputParams, outputFile: string, encoderNames: string[] = [], forceCpu = false, mediaHints?: KomorebiMediaHints, inputDir?: string): string[] | undefined {
 	const workflow = outputParams.extra?.komorebiWorkflow as KomorebiWorkflow | undefined;
 	if (!workflow || workflow === 'ncm') {
 		return undefined;
 	}
 
-	const inputs = outputParams.input.files.map((file) => normalizeFilesystemPathForKomorebi(file.filePath)).filter(Boolean);
+	const inputs = outputParams.input.files.map((file) => resolveKomorebiInputPath(file.filePath, inputDir)).filter(Boolean);
 	const args = ['-hide_banner'];
 	const inputArgs = (paths: string[]) => paths.forEach((filePath) => args.push('-i', filePath));
 
@@ -623,16 +1078,36 @@ export function buildKomorebiFFmpegArgs(outputParams: OutputParams, outputFile: 
 			return undefined;
 		}
 		const actualPreset = normalizeKomorebiVideoPreset(preset);
-		if (!forceCpu) {
+		if (!forceCpu && (actualPreset.container !== 'gif' || actualPreset.encodeSpeed !== 'low')) {
 			args.push('-hwaccel', 'auto');
 		}
 		inputArgs(actualPreset.audioSource === 'external' && inputs[1] ? [inputs[0], inputs[1]] : [inputs[0]]);
+		if (actualPreset.container === 'gif') {
+			const gifThreads = getKomorebiGifThreadCount(actualPreset.encodeSpeed);
+			if (gifThreads) {
+				args.push('-threads', gifThreads, '-filter_threads', gifThreads);
+			}
+			args.push(
+				'-filter_complex', getKomorebiGifFilter(actualPreset.quality, true, actualPreset, mediaHints?.videoFps),
+				'-map', '[gifout]',
+				'-an',
+				'-gifflags', '+offsetting+transdiff',
+				'-loop', '0',
+				outputFile,
+				'-y',
+			);
+			return args;
+		}
 		if (actualPreset.audioSource === 'external' && inputs[1]) {
 			args.push('-map', '0:v', '-map', '1:a', '-map', '0:s?');
 		} else if (actualPreset.audioSource === 'none') {
 			args.push('-map', '0:v');
 		} else {
 			args.push('-map', '0:v?', '-map', '0:a?', '-map', '0:s?', '-dn');
+		}
+		const videoFilter = getKomorebiVideoFilter(actualPreset, mediaHints?.videoFps);
+		if (videoFilter) {
+			args.push('-vf', videoFilter);
 		}
 		appendVideoEncoderArgs(args, actualPreset, encoderNames, forceCpu);
 		if (actualPreset.audioSource !== 'none') {
@@ -659,35 +1134,46 @@ export function buildKomorebiFFmpegArgs(outputParams: OutputParams, outputFile: 
 		if (!preset || !inputs[0]) {
 			return undefined;
 		}
-		inputArgs(preset.audioSource === 'external' && inputs[1] ? [inputs[0], inputs[1]] : [inputs[0]]);
-		const needsTranscode = outputParams.extra.komorebiFallbackTried || !!shouldKomorebiRemuxTranscode(preset.container, mediaHints);
+		const actualPreset = normalizeKomorebiRemuxPreset(preset);
+		inputArgs(actualPreset.audioSource === 'external' && inputs[1] ? [inputs[0], inputs[1]] : [inputs[0]]);
+		const needsFrameRateTransform = actualPreset.frameRate !== 'auto' && mediaHints?.hasVideo !== false;
+		const needsVideoTransform = actualPreset.aspectRatio !== 'source' || actualPreset.resolution !== 'source' || needsFrameRateTransform;
+		const needsTranscode = needsVideoTransform || outputParams.extra.komorebiFallbackTried || !!shouldKomorebiRemuxTranscode(actualPreset.container, mediaHints);
 		if (needsTranscode) {
 			const fallbackPreset: KomorebiVideoPreset = {
 				scene: 'live',
-				codec: preset.container === 'webm' ? 'av1' : preset.container === 'avi' ? 'mpeg4' : 'h264',
+				codec: actualPreset.container === 'webm' ? 'av1' : actualPreset.container === 'avi' ? 'mpeg4' : 'h264',
 				quality: 1,
-				container: (preset.container === 'wmv' || preset.container === '3gp') ? 'mp4' : preset.container as KomorebiVideoPreset['container'],
+				container: (actualPreset.container === 'wmv' || actualPreset.container === '3gp') ? 'mp4' : actualPreset.container as KomorebiVideoPreset['container'],
 				audioSource: 'source',
+				aspectRatio: actualPreset.aspectRatio,
+				resolution: actualPreset.resolution,
+				frameRate: actualPreset.frameRate,
+				encodeSpeed: actualPreset.encodeSpeed,
 			};
 			if (mediaHints?.hasVideo === false) {
-				if (preset.audioSource === 'external' && inputs[1]) {
+				if (actualPreset.audioSource === 'external' && inputs[1]) {
 					args.push('-map', '1:a?', '-dn');
 				} else {
 					args.push('-map', '0:a?', '-dn');
 				}
-				args.push('-c:a', preset.container === 'webm' ? 'libopus' : 'aac', '-b:a', '256k', '-map_metadata', '0');
+				args.push('-c:a', actualPreset.container === 'webm' ? 'libopus' : 'aac', '-b:a', '256k', '-map_metadata', '0');
 				args.push(outputFile, '-y');
 				return args;
 			}
-			if (preset.audioSource === 'external' && inputs[1]) {
+			if (actualPreset.audioSource === 'external' && inputs[1]) {
 				args.push('-map', '0:v?', '-map', '0:a?', '-map', '1:a?', '-map', '0:s?', '-dn');
 			} else {
 				args.push('-map', '0:v?', '-map', '0:a?', '-map', '0:s?', '-dn');
 			}
+			const videoFilter = getKomorebiVideoFilter(fallbackPreset, mediaHints?.videoFps, 'remux');
+			if (videoFilter) {
+				args.push('-vf', videoFilter);
+			}
 			appendVideoEncoderArgs(args, fallbackPreset, encoderNames, forceCpu);
-			args.push('-c:a', preset.container === 'webm' ? 'libopus' : 'aac', '-b:a', '256k', '-c:s', 'copy', '-map_metadata', '0');
+			args.push('-c:a', actualPreset.container === 'webm' ? 'libopus' : 'aac', '-b:a', '256k', '-c:s', 'copy', '-map_metadata', '0');
 		} else {
-			if (preset.audioSource === 'external' && inputs[1]) {
+			if (actualPreset.audioSource === 'external' && inputs[1]) {
 				args.push('-map', '0:v?', '-map', '0:a?', '-map', '1:a?', '-map', '0:s?', '-dn', '-c', 'copy', '-c:s', 'copy', '-map_metadata', '0');
 			} else {
 				args.push('-map', '0:v?', '-map', '0:a?', '-map', '0:s?', '-dn', '-c', 'copy', '-c:s', 'copy', '-map_metadata', '0');

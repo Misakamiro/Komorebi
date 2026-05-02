@@ -33,10 +33,10 @@
 		}
 	}
 	.bganimate-enter-active {
-		animation: bganimation ease-out 0.3s;
+		animation: bganimation var(--motion-standard) ease;
 	}
 	.bganimate-leave-active {
-		animation: bganimation ease-out 0.2s reverse;
+		animation: bganimation var(--motion-quick) var(--ease-exit) reverse;
 	}
 
 	.box {
@@ -51,7 +51,7 @@
 				0 16px 32px 0px hwb(var(--hoverShadow) / 0.02),
 				0 6px 6px 0px hwb(var(--hoverShadow) / 0.02),
 				0 0 0 1px hwb(var(--highlight) / 0.9);	// 包边
-		transition: transform cubic-bezier(0.33, 1, 1, 1) 0.3s, opacity linear 0.2s;
+		transition: transform var(--motion-panel) var(--ease-elegant), opacity var(--motion-standard) ease;
 		z-index: 0;	// 可能是由于 chromium 的 bug，不加这个会导致背景的 backdrop-filter 应用到 box 上
 		&>*:not(:last-child) {
 			margin-bottom: 12px;
@@ -79,14 +79,14 @@
 		opacity: 0;
 	}
 	.boxanimate-enter-active {
-		transition: transform cubic-bezier(0.33, 1, 1, 1) 0.3s, opacity linear 0.2s;
+		transition: transform var(--motion-panel) var(--ease-elegant), opacity var(--motion-standard) ease;
 	}
 	.boxanimate-enter-to, .boxanimate-leave-from {
 		transform: scale(1);
 		opacity: 1;
 	}
 	.boxanimate-leave-active {
-		transition: all linear 0.2s;
+		transition: transform var(--motion-quick) var(--ease-exit), opacity var(--motion-quick) ease;
 	}
 	.boxanimate-leave-to {
 		transform: scale(0.9);

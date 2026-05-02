@@ -678,14 +678,14 @@ defineExpose({
 			opacity: 0;
 		}
 		.menuAnimate-enter-active {
-			transition: transform cubic-bezier(0.33, 1, 1, 1) 0.15s, opacity linear 0.1s;
+			transition: transform var(--motion-standard) var(--ease-elegant), opacity var(--motion-quick) ease;
 		}
 		.menuAnimate-enter-to, .menuAnimate-leave-from {
 			transform: scale(1);
 			opacity: 1;
 		}
 		.menuAnimate-leave-active {
-			transition: all linear 0.1s;
+			transition: transform var(--motion-quick) var(--ease-exit), opacity var(--motion-quick) ease;
 		}
 
 	}

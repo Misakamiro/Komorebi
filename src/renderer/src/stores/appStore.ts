@@ -59,10 +59,10 @@ interface StoreState {
 		},
 	},
 	frontendSettings: {
-		// 鎵€鏈夊€奸兘鏄繀闇€棰勭疆榛樿鍊肩殑锛岃繖鏍峰湪鍒濆鍖栨椂浼氭妸娌℃湁淇濆瓨杩囩殑璁剧疆瀛樹竴閬?		colorTheme: string,
 		colorTheme: string,
 		colorThemeMode: 'light' | 'dark' | 'system',
 		language: LanguageCode,
+		animationSpeed: 'default' | 'fast' | 'slow',
 		useIEC: boolean,
 		useVirtualTaskList: boolean,
 	},
@@ -132,6 +132,7 @@ export const useAppStore = defineStore('app', {
 				colorTheme: 'themeLight',
 				colorThemeMode: 'system',
 				language: 'zh-CN',
+				animationSpeed: 'default',
 				useIEC: false,
 				useVirtualTaskList: true,
 			},
@@ -187,19 +188,19 @@ export const useAppStore = defineStore('app', {
 				const 这 = useAppStore();
 				const server = 这.currentServer;
 				const isRemoteService = server.entity.ip !== 'localhost';
-				const newlyAddedTaskIds: Promise<number>[] = [];	// 鑰冭檻鍒?timer 鐨勬渶鍚庝竴椤瑰苟涓嶄竴瀹氭槸缃戠粶鍒拌揪鐨勬渶鍚庝竴椤癸紝杩欓噷浣跨敤 Promise銆傚緟鍚庢湡杩滅▼璋冪敤鎵归噺鍖栧悗鍙敼
+				const newlyAddedTaskIds: Promise<number>[] = [];	// 考虑到 timer 的最后一项不一定最晚完成，这里用 Promise 等待全部添加完成。
 				let dropDelayCount = 0;
 
 				if (type === 'multiTask') {
-					let needStopCuzLimit = false;	// 鍥犱负浣跨敤浜?setTimeout锛屾墍浠ヤ娇鐢ㄦ爣璁颁綅鍋滄鍚庣画娣诲姞
+					let needStopCuzLimit = false;	// 因为使用 setTimeout 逐个添加，需要用标记位停止后续添加。
 					for (const input of inputList) {
-						setTimeout(async () => {	// v2.4 鐗堟湰寮€濮嬪畬鍏ㄥ彲浠ヤ笉瑕佸欢鏃讹紝浣嗘槸澶敓纭紝鎵€浠ュ姞涓姩鐢?
+						setTimeout(async () => {	// 保留轻微错峰，避免大量任务同时进入列表时界面过于生硬。
 							if (needStopCuzLimit) {
 								return;
 							}
 							const fileBaseName = typeof input === 'string' ? getPathBaseName(input) : input.name;
 							const fileType = typeof input === 'string' ? (await nodeBridge.getPathsCategorized(input)).lineResults?.[0] : 'lf';
-							const needUpload = fileType === 'lf' && isRemoteService;	// 缃戦〉鐗堝繀瀹氭槸 remoteService锛涘鏋滄嫋鍏ョ殑鏄枃浠惰€屼笉鏄瓧绗︿覆閭ｄ箞蹇呭畾鏄?lf锛堜互鍚庡啀鏀寔鏂囦欢澶规嫋鍏ワ級
+							const needUpload = fileType === 'lf' && isRemoteService;	// 远程服务需要上传本地文件；本地 Electron 任务直接使用原路径。
 							// console.log('添加任务', input, fileType);
 							if (needUpload) {
 								const limitedFileSizeGB = getLimitaion('maxUploadSizeGB');
@@ -216,9 +217,9 @@ export const useAppStore = defineStore('app', {
 							let promise: Promise<number> = 这.addTask(
 								trimExt(fileBaseName),
 								[needUpload ? inputName : (typeof input === 'string' ? input : input.path)]
-							);	// 缃戦〉鐗堟嫋鍏ユ枃浠跺繀瀹氫笂浼狅紝electron 鐗堟嫋鍏ユ枃浠跺垯鐩存帴浠ヨ矾寰勮緭鍏?
+							);	// 远程文件先用占位名建任务，本地文件直接用路径建任务。
 							if (needUpload) {
-								// addTask 鍚庯紝鍚庣閫氳繃鍙戦€佷竴涓?tasklistUpdate 鏉ヤ娇鍓嶇鏇存柊浠诲姟鍒楄〃锛岀劧鍚?resolve 鎺?addTask 璇锋眰銆傜敱浜庝笂浼犺繃绋嬪苟涓嶄細璁块棶 task锛屾晠鍝€曠綉缁滃埌杈鹃『搴忎笉瀵癸紝杩欓噷涔熶笉浼氬嚭閿?
+								// addTask 后后端会先发 tasklistUpdate，再 resolve addTask；上传流程不依赖完整 task 内容。
 								promise.then(async (taskId) => {
 									const file = await addUploadTask(server as any, input, taskId, fileBaseName, inputName);
 									server.data.uploadFiles.push(file);
@@ -234,10 +235,10 @@ export const useAppStore = defineStore('app', {
 					}
 				} else if (type === 'multiInput') {
 					/**
-					 * 鏈湴锛氭棤闇€涓婁紶锛屽瓧绗︿覆鍘熸牱浼犲叆锛孎ile 璇诲彇 .path
-					 * 杩滅▼锛氬瓧绗︿覆鍒ゆ柇鏄枃浠讹紙闈炴枃浠跺す锛夊悗鐢熸垚 inputName 鍗犱綅绗﹀悗涓婁紶锛屾枃浠剁洿鎺ヤ笂浼狅紙涓㈡枃浠跺す浼氬け璐ワ級
+					 * 本地：无需上传，字符串原样传入，File 读取 .path。
+					 * 远程：文件先生成 inputName 占位符再上传；文件夹暂不支持远程拖入。
 					 */
-					// 鍏堟坊鍔犲崰浣嶇浠诲姟锛岀劧鍚庢鏌ヤ笂浼?
+					// 先添加占位符任务，然后检查上传。
 					const firstFileBaseName = typeof inputList[0] === 'string' ? trimExt(getPathBaseName(inputList[0])) : inputList[0]?.name;
 					const taskId = await 这.addTask(
 						firstFileBaseName ? trimExt(firstFileBaseName) : `新任务 ${new Date().toISOString()}`,
@@ -594,16 +595,18 @@ export const useAppStore = defineStore('app', {
 				}, 250);
 			});
 		},
-		// #endregion 浠诲姟澶勭悊
-		// #region 鍙傛暟澶勭悊
+		// #endregion 任务处理
+		// #region 参数处理
 		/**
-		 * 淇敼 globalParams 鍚庨渶璋冪敤姝ゅ嚱鏁?		 * 鍑芥暟灏嗕慨鏀瑰悗鐨勫叏灞€鍙傛暟搴旂敤鍒板綋鍓嶉€夋嫨鐨勪换鍔￠」锛岀劧鍚庝繚瀛樺埌鏈湴纾佺洏
-		 * 瀵逛簬鐢ㄦ埛鎿嶄綔锛屽皢棰勮鍙傛暟缃负鏈繚瀛?		 */
+		 * 修改 globalParams 后需要调用此函数。
+		 * 函数会把修改后的全局参数应用到当前选择的任务项，然后保存到本地磁盘。
+		 * 对于用户操作，将预设参数置为未保存。
+		 */
 		applyParameters(behavior: 'modifyTask' | 'applyToAllTasks' | 'loadPreset' | 'verifyDefaults' = 'modifyTask', selection?: Set<number>) {
 			const 这 = useAppStore();
-			// 鏇存敼鍒颁竴浜涗笉鍖归厤鐨勫€煎悗浼氬鑷?getFFmpegParaArray 鍑洪敊锛屼絾鏄慨姝ｄ唬鐮佸氨鍦ㄥ悗闈紝鍥犳浠呴渶蹇界暐瀹冿紝璁╁畠缁х画杩愯涓嬪幓锛屼笉瑕佹€ョ潃鏇存柊
+			// 某些临时不匹配的参数可能导致 getFFmpegParaArray 报错；后续规范化会修正，先允许流程继续。
 
-			// 鍙樻洿棰勮鍙傛暟
+			// 变更预设参数
 			if (behavior === 'modifyTask') {
 				这.globalParams.extra.presetName = '';
 				这.presetName = '';
@@ -793,8 +796,8 @@ export const useAppStore = defineStore('app', {
 				这.applyParameters('loadPreset');
 			}
 			if (这.selectedTask.size > 0) {
-				// 杩欎釜鎿嶄綔绾︾瓑浜?applySelectedTask
-				// 涓昏鐩殑鏄紝褰撻€変腑浜嗕换鍔℃洿鏀归璁炬椂锛屽叏灞€鍙傛暟涓殑杈撳叆鏂囦欢鍚嶇瓑淇℃伅浼氳鏇挎崲锛屼絾浠诲姟涓殑涓嶈鏇挎崲銆傝嫢椹笂灏变慨鏀瑰叾浠栧弬鏁帮紝浼氬鑷翠换鍔′腑鐨勮緭鍏ユ枃浠跺悕绛変俊鎭彉鎴愬叏灞€鐨?
+				// 这个操作约等于 applySelectedTask。
+				// 选中任务后切换预设时，全局参数中的输入文件名会被替换；这里用任务参数回填，避免后续修改覆盖任务自己的输入信息。
 				const fisrtSelectedTaskId = [...这.selectedTask][0];
 				这.globalParams = replaceOutputParams(这.currentServer.data.tasks[fisrtSelectedTaskId].after, 这.globalParams, true);
 			}
@@ -960,7 +963,8 @@ export const useAppStore = defineStore('app', {
 			}
 		},
 		/**
-		 * 鍒濆鍖栨湇鍔″櫒杩炴帴骞舵寕杞戒簨浠剁洃鍚?		 */
+		 * 初始化服务器连接并挂载事件监听。
+		 */
 		initializeServer(serverId: string, ip: string, port: number, username: string, password: string, retryCount = 0) {
 			const 这 = useAppStore();
 			const server = 这.servers.find((server) => server.data.id === serverId) as Server;
@@ -984,7 +988,8 @@ export const useAppStore = defineStore('app', {
 					server.data.name = ip === 'localhost' ? 'Local server' : ip;
 					console.log(`成功连接到服务 ${server.entity.ip}`);
 					这.pushMsg(`成功连接到服务 ${server.data.name}`, NotificationLevel.ok);
-					server.data.tasks = [];	// 鐢变簬 taskList 鍙寘鍚?id锛岄噸鏂拌繛鎺ュ悗闇€瑕佹竻闄ゅ師 task 淇℃伅浠ヨ幏鍙栨柊鐨?					这.updateServerProperties(server);
+					server.data.tasks = [];	// taskList 只包含 id，重连后需要清除旧 task 信息以获取最新数据。
+					这.updateServerProperties(server);
 					server.data.ffmpegInfo = { version: '', scanning: true, videoEncodersCount: 0, audioEncodersCount: 0, muxersCount: 0, demuxersCount: 0, filtersCount: 0 };
 					try {
 						await 这.updateServerProperties(server);
@@ -1044,7 +1049,8 @@ export const useAppStore = defineStore('app', {
 			});
 		},
 		/**
-		 * 閲嶆柊杩炴帴宸叉帀绾挎垨鏈垚鍔熻繛鎺ョ殑鏈嶅姟鍣?		 */
+		 * 重新连接已掉线或未成功连接的服务器。
+		 */
 		reConnectServer(serverId: string) {
 			const 这 = useAppStore();
 			const server = 这.servers.find((server) => server.data.id === serverId) as Server;
@@ -1099,6 +1105,14 @@ export const useAppStore = defineStore('app', {
 			const effectiveTheme = themeMode === 'system'
 				? (systemPrefersDark ? 'themeDark' : 'themeLight')
 				: themeMode === 'dark' ? 'themeDark' : 'themeLight';
+			const animationSpeed = ['fast', 'slow'].includes(这.frontendSettings.animationSpeed)
+				? 这.frontendSettings.animationSpeed
+				: 'default';
+			const motionProfiles = {
+				default: { quick: '0.24s', standard: '0.42s', panel: '0.58s', soft: '0.72s', press: '0.16s', dashboard: '0.42s', stagger: '0.06s', float: '2.8s', spin: '1s' },
+				fast: { quick: '0.16s', standard: '0.28s', panel: '0.36s', soft: '0.46s', press: '0.1s', dashboard: '0.28s', stagger: '0.03s', float: '2.1s', spin: '0.78s' },
+				slow: { quick: '0.34s', standard: '0.62s', panel: '0.82s', soft: '1.02s', press: '0.2s', dashboard: '0.66s', stagger: '0.1s', float: '3.6s', spin: '1.32s' },
+			} as const;
 
 			if (isUserInteraction) {
 				// 瀛樼洏
@@ -1112,14 +1126,23 @@ export const useAppStore = defineStore('app', {
 			这.frontendSettings.colorThemeMode = themeMode;
 			这.frontendSettings.language = setLanguage(这.frontendSettings.language);
 			这.frontendSettings.colorTheme = effectiveTheme;
+			这.frontendSettings.animationSpeed = animationSpeed;
 			document.body.className = effectiveTheme;
+			document.documentElement.setAttribute('data-animation-speed', animationSpeed);
+			document.body.setAttribute('data-animation-speed', animationSpeed);
+			for (const [name, value] of Object.entries(motionProfiles[animationSpeed])) {
+				document.documentElement.style.setProperty(`--motion-${name}`, value);
+				document.body.style.setProperty(`--motion-${name}`, value);
+			}
 			nodeBridge.setBlurBehindWindow(false);
 			// document.body.setAttribute('data-color_theme', 这.frontendSettings.colorTheme);
 
+			window.frontendSettings ||= {};
 			window.frontendSettings.useIEC = 这.frontendSettings.useIEC;
 			window.frontendSettings.language = 这.frontendSettings.language;
 			window.frontendSettings.colorThemeMode = themeMode;
 			window.frontendSettings.colorTheme = effectiveTheme;
+			window.frontendSettings.animationSpeed = animationSpeed;
 		},
 		
 		// #endregion 鍏朵粬

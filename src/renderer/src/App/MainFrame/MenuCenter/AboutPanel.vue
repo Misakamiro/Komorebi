@@ -45,7 +45,7 @@ const tr = computed(() => {
 		font-size: 14px;
 		line-height: 1.7;
 		color: var(--fontColor);
-		animation: contentFadeIn 0.24s cubic-bezier(0.2, 0.9, 0.2, 1);
+		animation: contentFadeIn var(--motion-panel) var(--ease-elegant);
 		section {
 			margin-bottom: 22px;
 		}
@@ -77,9 +77,9 @@ const tr = computed(() => {
 			font-family: inherit;
 			cursor: pointer;
 			box-shadow: 0 1px 4px hwb(var(--hoverShadow) / 0.08);
-			transition: transform 0.18s cubic-bezier(0.2, 0.9, 0.2, 1),
-				background 0.18s ease,
-				box-shadow 0.18s ease;
+			transition: transform var(--motion-standard) var(--ease-elegant),
+				background var(--motion-standard) ease,
+				box-shadow var(--motion-standard) ease;
 			&:hover {
 				transform: translateY(-1px);
 				background: hwb(var(--bg99) / 0.88);

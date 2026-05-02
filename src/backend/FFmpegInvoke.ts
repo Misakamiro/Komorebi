@@ -9,6 +9,7 @@ import { ChapterInfo, EncoderDetail, InputInfo, StreamInfo, Frame } from '@commo
 import i11n from '@common/i11n/i11n';
 import { spawnInvoker } from '@common/spawnInvoker';
 import { selectString, replaceString, scanf, TypedEventEmitter } from '@common/utils';
+import { getKomorebiResolutionText } from '@common/komorebiPresets';
 import { log } from './utils';
 import osBridge from './osBridge';
 
@@ -72,6 +73,17 @@ const parseNumber = (value?: string) => {
 	}
 	const parsed = Number.parseFloat(value);
 	return Number.isFinite(parsed) ? parsed : NaN;
+};
+
+const parseFrameRateValue = (value?: string) => {
+	if (!value) {
+		return undefined;
+	}
+	const ratioMatch = value.match(/^(\d+(?:\.\d+)?)\/(\d+(?:\.\d+)?)$/);
+	const parsed = ratioMatch
+		? Number.parseFloat(ratioMatch[1]) / Number.parseFloat(ratioMatch[2])
+		: Number.parseFloat(value);
+	return Number.isFinite(parsed) && parsed > 0 && parsed <= 1000 ? parsed : undefined;
 };
 
 const parseProgressTime = (value?: string) => {
@@ -152,6 +164,7 @@ export class FFmpeg extends (EventEmitter as new () => TypedEventEmitter<FFmpegI
 	private inputsInfo: InputInfo[] = [];
 
 	private stdoutBuffer: string = '';
+	private lastShowInfoStatusAt = 0;
 
 	/**
 	 * @param mode 0: 直接执行 ffmpeg　1: 检测 ffmpeg 版本　２：多媒体文件信息读取
@@ -229,6 +242,7 @@ export class FFmpeg extends (EventEmitter as new () => TypedEventEmitter<FFmpegI
 		}
 
 		// 暂存所有 InputInfo 相关的行到 readingInputsInfoBuffer，放到这个函数里处理
+		let suppressDataLine = false;
 		const parseInputInfo = () => {
 			const inputInfoLine = this.readingInputsInfoBuffer[0];
 			if (!inputInfoLine) {
@@ -280,11 +294,12 @@ export class FFmpeg extends (EventEmitter as new () => TypedEventEmitter<FFmpegI
 						readingStreamInfo.codec = detailItems[0]?.match(/\w+/)?.[0];
 						if (type === 'Video') {
 							readingStreamInfo.pixelFormat = detailItems[1]?.match(/\w+/)?.[0];
-							readingStreamInfo.resolution = detailItems.find((item) => /\d+x\d+/.test(item))?.match(/\d+x\d+/)?.[0];
+							readingStreamInfo.resolution = getKomorebiResolutionText(detailItems.join(', ')) || undefined;
 							const bitrate = +(bitrateItem?.match(/(\d+) kb\/s/)?.[1] || NaN);
-							const fps = +(detailItems.find((item) => item.includes('fps'))?.match(/(\d+(\.)?\d*) fps/)?.[1] || NaN);
+							const fps = parseFrameRateValue(detailItems.find((item) => item.includes('fps'))?.match(/(\d+(?:\.\d+)?(?:\/\d+(?:\.\d+)?)?)\s*fps/)?.[1])
+								?? parseFrameRateValue(detailItems.find((item) => item.includes('tbr'))?.match(/(\d+(?:\.\d+)?(?:\/\d+(?:\.\d+)?)?)\s*tbr/)?.[1]);
 							readingStreamInfo.bitrate = Number.isFinite(bitrate) ? bitrate : undefined;
-							readingStreamInfo.fps = Number.isFinite(fps) ? fps : undefined;
+							readingStreamInfo.fps = fps;
 						} else if (type === 'Audio') {
 							const sampleRate = +(detailItems.find((item) => item.includes('Hz'))?.match(/\d+/)?.[0] || NaN);
 							readingStreamInfo.sampleRate = Number.isFinite(sampleRate) ? sampleRate : undefined;
@@ -372,6 +387,49 @@ export class FFmpeg extends (EventEmitter as new () => TypedEventEmitter<FFmpegI
 				message = thisLine;
 			}
 
+			if (match && sender.startsWith('Parsed_showinfo_')) {
+				suppressDataLine = true;
+				if (message.startsWith('n:')) {
+					const nMatch = message.match(/n: *(\d+)/);
+					const ptsMatch = message.match(/pts: *(\d+)/);
+					const ptsTimeMatch = message.match(/pts_time: *(\d+\.?\d*)/);
+					const typeMatch = message.match(/type: *([IPB])/);
+					const meanMatch = message.match(/mean: *\[([^\]]+)\]/);
+					const stdevMatch = message.match(/stdev: *\[([^\]]+)\]/);
+
+					if (nMatch && ptsMatch && ptsTimeMatch && typeMatch && meanMatch && stdevMatch) {
+						const frame: Frame = {
+							n: parseInt(nMatch[1]),
+							pts: parseInt(ptsMatch[1]),
+							pts_time: parseFloat(ptsTimeMatch[1]),
+							type: typeMatch[1] as 'I' | 'P' | 'B',
+							mean: meanMatch[1].split(' ').map(Number),
+							stdev: stdevMatch[1].split(' ').map(Number),
+						};
+						if (this.mode === 'getFrameInfo') {
+							this.framesResult.push(frame);
+						}
+						const now = Date.now();
+						if (this.mode === 'direct' && (frame.n < 2 || now - this.lastShowInfoStatusAt >= 220)) {
+							this.lastShowInfoStatusAt = now;
+							this.emit('status', {
+								frame: frame.n + 1,
+								fps: NaN,
+								q: NaN,
+								size: NaN,
+								time: frame.pts_time,
+								bitrate: NaN,
+								speed: NaN,
+							});
+						}
+						if (frame.n % 2000 === 0 && frame.n > 0) {
+							log.dev(`帧扫描进度：${frame.n}`);
+						}
+					}
+				}
+				return;
+			}
+
 			const beforeMessagesLength = this.messages.length;
 			if (false) {
 			} else if (message.includes('OpenEncodeSessionEx failed: out of memory (10)')) {
@@ -450,13 +508,25 @@ export class FFmpeg extends (EventEmitter as new () => TypedEventEmitter<FFmpegI
 			}
 		}
 
-		const newLinePos = this.stdoutBuffer.indexOf('\n') >= 0 ? this.stdoutBuffer.indexOf('\n') : this.stdoutBuffer.indexOf(`\r`);
+		const newlinePos = this.stdoutBuffer.indexOf('\n');
+		const carriageReturnPos = this.stdoutBuffer.indexOf('\r');
+		const newLinePos = newlinePos < 0
+			? carriageReturnPos
+			: carriageReturnPos < 0
+				? newlinePos
+				: Math.min(newlinePos, carriageReturnPos);
 		if (newLinePos < 0) {
 			// 一行没接收完
 			return;
 		}
-		const thisLine = this.stdoutBuffer[newLinePos - 1] === '\r' ? this.stdoutBuffer.slice(0, newLinePos - 1) : this.stdoutBuffer.slice(0, newLinePos);
+		const thisLine = this.stdoutBuffer.slice(0, newLinePos);
 		this.stdoutBuffer = this.stdoutBuffer.slice(newLinePos + 1);
+		if (!thisLine) {
+			setTimeout(() => {
+				this.dataProcessing();
+			}, 0);
+			return;
+		}
 
 		/**
 		 * ffmpeg 日志流程：
@@ -695,7 +765,9 @@ export class FFmpeg extends (EventEmitter as new () => TypedEventEmitter<FFmpegI
 				break;
 			}
 
-		this.emit('data', { content: thisLine });	// 状态机运行过后再 emit，因为状态机内部可能会递归调用 dataProcessing()
+		if (!suppressDataLine) {
+			this.emit('data', { content: thisLine });
+		}
 		setTimeout(() => {
 			// 约等于 while (true)，但加个延迟用于 doEvents
 			this.dataProcessing();

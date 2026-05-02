@@ -91,7 +91,7 @@ const handleKeyup = (event: KeyboardEvent) => {
 		background: var(--f7);
 		border: #CCC 1px solid;
 		box-shadow: 0px 4px 4px rgba(0, 0, 0, 0.1) inset;
-		transition: background-color 0.18s ease, border-color 0.18s ease;
+		transition: background-color var(--motion-standard) ease, border-color var(--motion-standard) ease;
 	}
 		.checkbox-track-background {
 			position: absolute;
@@ -99,7 +99,7 @@ const handleKeyup = (event: KeyboardEvent) => {
 			border-radius: 24px;
 			background: hsl(210, 85%, 60%);
 			box-shadow: 0px 4px 4px rgba(0, 0, 0, 0.1) inset;
-			transition: width 0.18s cubic-bezier(0.2, 0.9, 0.2, 1), background-color 0.18s ease;
+			transition: width var(--motion-panel) var(--ease-elegant), background-color var(--motion-standard) ease;
 		}
 		.checkbox-slipper {
 			position: absolute;
@@ -110,7 +110,7 @@ const handleKeyup = (event: KeyboardEvent) => {
 			border-radius: 50%;
 			background: linear-gradient(180deg, #fefefe, #f0f0f0);
 			box-shadow: 0px 1px 3px 0px rgba(0, 0, 0, 0.3);
-			transition: transform 0.18s cubic-bezier(0.2, 0.9, 0.2, 1), background 0.18s ease, box-shadow 0.18s ease;
+			transition: transform var(--motion-panel) var(--ease-elegant), background var(--motion-standard) ease, box-shadow var(--motion-standard) ease;
 			will-change: transform;
 			border: none;
 		}

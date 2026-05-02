@@ -167,7 +167,7 @@ const menuCenterPadStyle = computed(() => {
 			height: '28px',
 			background: 'linear-gradient(to bottom, hwb(var(--bg97)), hwb(var(--bg95)))',
 			opacity: '0',
-			transitionDelay: '0s, 0s, 0s, 0s, 0.2s',
+			transitionDelay: '0s, 0s, 0s, 0s, var(--motion-standard)',
 		};
 	} else if (appStore.showMenuCenter === 1) {
 		return {
@@ -324,6 +324,9 @@ const handleMenuItemClicked = (event: Event, value: any) => {
 };
 
 const handleParaButtonClicked = (index: number) => {
+	if (index === selectedPanelIndex.value) {
+		return;
+	}
 	animationName.value = index < selectedPanelIndex.value ? 'animationUp' : 'animationDown';
 	selectedPanelIndex.value = index;
 };
@@ -394,12 +397,14 @@ onMounted(() => {
 		box-shadow: 0 2px 8px hwb(0 10% 90% / 0.2);
 		overflow: hidden;
 		z-index: 2;
-		transition: left 0.26s cubic-bezier(0.2, 0.9, 0.2, 1),
-					top 0.26s cubic-bezier(0.2, 0.9, 0.2, 1),
-					width 0.26s cubic-bezier(0.2, 0.9, 0.2, 1),
-					height 0.26s cubic-bezier(0.2, 0.9, 0.2, 1),
-					opacity 0.15s linear;
+		transition: left var(--motion-panel) var(--ease-elegant),
+					top var(--motion-panel) var(--ease-elegant),
+					width var(--motion-panel) var(--ease-elegant),
+					height var(--motion-panel) var(--ease-elegant),
+					opacity var(--motion-standard) ease;
 		will-change: left, top, width, height, opacity;
+		transform: translateZ(0);
+		backface-visibility: hidden;
 	}
 	.container {
 		position: absolute;
@@ -408,12 +413,15 @@ onMounted(() => {
 		overflow: hidden;
 		z-index: 2;
 		transition:
-			left 0.26s cubic-bezier(0.2, 0.9, 0.2, 1),
-			top 0.26s cubic-bezier(0.2, 0.9, 0.2, 1),
-			width 0.26s cubic-bezier(0.2, 0.9, 0.2, 1),
-			height 0.26s cubic-bezier(0.2, 0.9, 0.2, 1),
-			opacity 0.12s linear;
+			left var(--motion-panel) var(--ease-elegant),
+			top var(--motion-panel) var(--ease-elegant),
+			width var(--motion-panel) var(--ease-elegant),
+			height var(--motion-panel) var(--ease-elegant),
+			opacity var(--motion-standard) ease;
 		will-change: left, top, width, height, opacity;
+		contain: layout paint;
+		transform: translateZ(0);
+		backface-visibility: hidden;
 		-webkit-app-region: none;
 		.topDragger {
 			position: absolute;
@@ -450,21 +458,29 @@ onMounted(() => {
 	}
 	.animationUp-enter-from, .animationDown-leave-to {
 		opacity: 0;
-		transform: translateY(-30px);
+		transform: translate3d(0, -8px, 0) scale(0.998);
 	}
 	.animationDown-enter-from, .animationUp-leave-to {
 		opacity: 0;
-		transform: translateY(30px);
+		transform: translate3d(0, 8px, 0) scale(0.998);
 	}
 	.animationUp-enter-active, .animationUp-leave-active,
 	.animationDown-enter-active, .animationDown-leave-active {
-		transition: opacity 0.18s, transform 0.22s cubic-bezier(0.2, 0.9, 0.2, 1);
+		transition: opacity var(--motion-standard) ease, transform var(--motion-standard) var(--ease-elegant);
 		will-change: opacity, transform;
+		backface-visibility: hidden;
+	}
+	.animationUp-leave-active,
+	.animationDown-leave-active {
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		pointer-events: none;
 	}
 	.animationUp-enter-to, .animationUp-leave-from,
 	.animationDown-enter-to, .animationDown-leave-from {
 		opacity: 1;
-		transform: translateY(0);
+		transform: translate3d(0, 0, 0) scale(1);
 	}
 	.lrCenter {
 		position: absolute;
@@ -498,7 +514,7 @@ onMounted(() => {
 					background-color: transparent;
 					border: none;
 					border-radius: 8px;
-					transition: background-color 0.16s ease, transform 0.16s cubic-bezier(0.2, 0.9, 0.2, 1), box-shadow 0.16s ease;
+					transition: background-color var(--motion-standard) ease, transform var(--motion-standard) var(--ease-elegant), box-shadow var(--motion-standard) ease;
 					&:hover {
 						background-color: hwb(var(--hoverLightBg) / 0.4);
 						transform: translateX(2px);
@@ -511,7 +527,7 @@ onMounted(() => {
 						height: 18px;
 						vertical-align: -4px;
 						margin-right: 6px;
-						transition: color 0.18s ease, transform 0.18s cubic-bezier(0.2, 0.9, 0.2, 1);
+						transition: color var(--motion-standard) ease, transform var(--motion-standard) var(--ease-elegant);
 					}
 				}
 			}
@@ -524,6 +540,13 @@ onMounted(() => {
 				text-align: left;
 				overflow: auto;
 				overscroll-behavior: contain;
+				contain: layout paint;
+				transform: translateZ(0);
+				backface-visibility: hidden;
+				& > * {
+					transform: translateZ(0);
+					backface-visibility: hidden;
+				}
 			}
 		}
 	}

@@ -148,7 +148,7 @@ const handleApplyAllClick = () => {
 			border: none;
 			outline: none;
 			will-change: transform;
-			transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
+			transition: transform var(--motion-standard) var(--ease-elegant), box-shadow var(--motion-standard) ease, filter var(--motion-standard) ease;
 			&:hover {
 				transform: translateY(-1px) scale(1.015);
 				filter: saturate(1.08);

@@ -8,7 +8,7 @@ import path from 'path';
 import { ServiceTask, TaskStatus, OutputParams, FFBoxServiceEvent, Notification, NotificationLevel, FFmpegProgress, WorkingStatus, FFBoxServiceInterface, FFmpegInfo, FFmpegCodecDetail, FFmpegFilterDetail, FFmpegMuxerDetail, FFmpegDemuxerDetail, NcmTaskParams, InputInfo } from '@common/types';
 import i11n from '@common/i11n/i11n';
 import { genTaskOutputFiles, getFFmpegParaArray } from '@common/getFFmpegParaArray';
-import { buildKomorebiFFmpegArgs, buildKomorebiRemuxFallbackParams, buildNcmDumpArgs, getKomorebiMediaHints, shouldKomorebiRemuxTranscode } from '@common/komorebiPresets';
+import { buildKomorebiFFmpegArgs, buildKomorebiRemuxFallbackParams, buildNcmDumpArgs, getKomorebiMediaHints, KomorebiEncodeSpeed, shouldKomorebiRemuxTranscode } from '@common/komorebiPresets';
 import localConfig from '@common/localConfig';
 import { parseFFmpegCodecsToCodecsList, parseFFmpegMuDeMuxersToList } from '@common/params/parser';
 import { getInitialServiceTask, TypedEventEmitter, replaceOutputParams, randomString, getOutputDuration, parseTimeString, getOutputFileTime } from '@common/utils';
@@ -56,6 +56,7 @@ export class FFBoxService extends (EventEmitter as new () => TypedEventEmitter<F
 	public functionLevel = 100;
 	public machineId: string;
 	private ffmpegScanToken = 0;
+	private progressOutputSizeProbe: Map<number, { checkedAt: number; sizeKb: number }> = new Map();
 	// 设置部分
 	private maxThreads = 2;
 	private customFFmpegPath: string;
@@ -131,11 +132,26 @@ export class FFBoxService extends (EventEmitter as new () => TypedEventEmitter<F
 		]);
 	}
 
-	private applyKomorebiThreadLimit(args: string[]): string[] {
-		if (this.maxThreads <= 1 || args.includes('-threads')) {
+	private getKomorebiEncodeSpeed(task: ServiceTask): KomorebiEncodeSpeed {
+		const speed = task.after.extra?.komorebiPreset?.encodeSpeed;
+		return speed === 'fast' || speed === 'low' ? speed : 'balanced';
+	}
+
+	private applyKomorebiThreadLimit(args: string[], task: ServiceTask): string[] {
+		if (args.includes('-threads')) {
 			return args;
 		}
-		const threadCount = Math.max(1, Math.floor((Math.max(2, os.cpus().length) - 1) / this.maxThreads));
+		const speed = this.getKomorebiEncodeSpeed(task);
+		if (speed === 'fast') {
+			return args;
+		}
+		if (this.maxThreads <= 1 && speed !== 'low') {
+			return args;
+		}
+		const cpuCount = Math.max(2, os.cpus().length);
+		const threadCount = speed === 'low'
+			? Math.max(1, Math.min(4, Math.floor(cpuCount / 4)))
+			: Math.max(1, Math.floor((cpuCount - 1) / this.maxThreads));
 		const outputIndex = args[args.length - 1] === '-y' ? args.length - 2 : args.length - 1;
 		args.splice(Math.max(0, outputIndex), 0, '-threads', `${threadCount}`);
 		return args;
@@ -146,10 +162,33 @@ export class FFBoxService extends (EventEmitter as new () => TypedEventEmitter<F
 		if (outputFile && task.after.extra?.komorebiWorkflow) {
 			const args = buildKomorebiFFmpegArgs(task.after, outputFile, this.getAvailableEncoderNames(), forceCpu, getKomorebiMediaHints(this.getPrimaryInputInfo(task)));
 			if (args) {
-				return this.applyKomorebiThreadLimit(args);
+				return this.applyKomorebiThreadLimit(args, task);
 			}
 		}
 		return getFFmpegParaArray({ outputParams: task.after });
+	}
+
+	private buildRemoteTaskFFmpegArgs(task: ServiceTask, forceCpu = false): string[] {
+		const remoteOutputFiles = task.outputFiles.map((fileBaseName) => `${os.tmpdir()}/FFBoxDownloadCache/${fileBaseName}`);
+		const outputFile = remoteOutputFiles[0];
+		if (outputFile && task.after.extra?.komorebiWorkflow) {
+			const args = buildKomorebiFFmpegArgs(
+				task.after,
+				outputFile,
+				this.getAvailableEncoderNames(),
+				forceCpu,
+				getKomorebiMediaHints(this.getPrimaryInputInfo(task)),
+				`${os.tmpdir()}/FFBoxUploadCache`,
+			);
+			if (args) {
+				return this.applyKomorebiThreadLimit(args, task);
+			}
+		}
+		return getFFmpegParaArray({
+			outputParams: task.after,
+			inputDir: `${os.tmpdir()}/FFBoxUploadCache`,
+			overrideFilePaths: remoteOutputFiles,
+		});
 	}
 
 	private coerceProgressStatus(status: FFmpegProgress, previous?: FFmpegProgress): FFmpegProgress {
@@ -172,26 +211,87 @@ export class FFBoxService extends (EventEmitter as new () => TypedEventEmitter<F
 		};
 	}
 
+	private getTaskOutputPaths(task: ServiceTask): string[] {
+		return (task.outputFiles || [])
+			.map((outputFile) => task.remoteTask ? path.join(os.tmpdir(), 'FFBoxDownloadCache', outputFile) : outputFile)
+			.filter(Boolean);
+	}
+
+	private trimProgressLog(task: ServiceTask): void {
+		const maxPoints = 900;
+		const compactAt = 1200;
+		for (const key of ['time', 'frame', 'size'] as const) {
+			const log = task.progressLog[key];
+			if (log.length <= compactAt) {
+				continue;
+			}
+			log.splice(1, Math.max(0, log.length - maxPoints));
+		}
+	}
+
+	private probeTaskOutputSizeKb(id: number, task: ServiceTask, force = false): number {
+		const now = Date.now();
+		const cached = this.progressOutputSizeProbe.get(id);
+		if (!force && cached && now - cached.checkedAt < 800) {
+			return cached.sizeKb;
+		}
+		let sizeKb = 0;
+		let hasOutput = false;
+		for (const outputPath of this.getTaskOutputPaths(task)) {
+			try {
+				const stat = fs.statSync(outputPath);
+				if (stat.isFile()) {
+					sizeKb += stat.size / 1000;
+					hasOutput = true;
+				}
+			} catch {}
+		}
+		const result = hasOutput ? sizeKb : cached?.sizeKb ?? 0;
+		this.progressOutputSizeProbe.set(id, { checkedAt: now, sizeKb: result });
+		return result;
+	}
+
 	private appendProgressStatus(id: number, task: ServiceTask, status: FFmpegProgress): void {
 		const progressLog = task.progressLog;
 		const time = new Date().getTime() / 1000 - progressLog.lastStarted + progressLog.elapsed;
 		const lastValue = (log: Array<[number, number]>) => log.length ? log[log.length - 1][1] : 0;
+		const lastLogTime = progressLog.time.length ? progressLog.time[progressLog.time.length - 1][0] : 0;
+		const previousSize = lastValue(progressLog.size);
+		const previousMediaTime = lastValue(progressLog.time);
 		const previous: FFmpegProgress = {
 			frame: lastValue(progressLog.frame),
 			fps: 0,
 			q: 0,
-			size: lastValue(progressLog.size),
-			time: lastValue(progressLog.time),
-			bitrate: 0,
+			size: previousSize,
+			time: previousMediaTime,
+			bitrate: previousMediaTime > 0 && previousSize > 0 ? previousSize * 8 / previousMediaTime : 0,
 			speed: 0,
 		};
 		let safeStatus: FFmpegProgress;
 		try {
 			safeStatus = this.coerceProgressStatus(status, previous);
+			const probedOutputSize = this.probeTaskOutputSizeKb(id, task);
+			if (probedOutputSize > safeStatus.size) {
+				safeStatus.size = probedOutputSize;
+			}
+			const realDelta = time - lastLogTime;
+			const mediaDelta = safeStatus.time - previousMediaTime;
+			const sizeDelta = safeStatus.size - previousSize;
+			if ((!Number.isFinite(status.speed) || status.speed < 0) && mediaDelta > 0 && realDelta > 0) {
+				safeStatus.speed = mediaDelta / realDelta;
+			}
+			if (!Number.isFinite(status.bitrate) || status.bitrate < 0) {
+				if (mediaDelta > 0 && sizeDelta > 0) {
+					safeStatus.bitrate = sizeDelta * 8 / mediaDelta;
+				} else if (safeStatus.time > 0 && safeStatus.size > 0) {
+					safeStatus.bitrate = safeStatus.size * 8 / safeStatus.time;
+				}
+			}
 			for (const parameter of ['time', 'frame', 'size']) {
 				const _parameter = parameter as 'time' | 'frame' | 'size';
 				progressLog[_parameter].push([time, safeStatus[_parameter]]);
 			}
+			this.trimProgressLog(task);
 		} catch (error) {
 			log.warn(`[任务 ${id}] 忽略异常进度数据：${error}`);
 			safeStatus = previous;
@@ -202,6 +302,23 @@ export class FFBoxService extends (EventEmitter as new () => TypedEventEmitter<F
 			status: safeStatus,
 		});
 		webhookManager.triggerTaskEvent('task.progress', id, { taskId: id, progress: safeStatus });
+	}
+
+	private appendFinalProgressStatus(id: number, task: ServiceTask): void {
+		const lastValue = (log: Array<[number, number]>) => log.length ? log[log.length - 1][1] : 0;
+		const elapsed = Math.max(0.001, new Date().getTime() / 1000 - task.progressLog.lastStarted + task.progressLog.elapsed);
+		const outputDuration = getOutputDuration(task);
+		const mediaTime = Number.isFinite(outputDuration) && outputDuration > 0 ? outputDuration : lastValue(task.progressLog.time);
+		const finalSize = Math.max(lastValue(task.progressLog.size), this.probeTaskOutputSizeKb(id, task, true));
+		this.appendProgressStatus(id, task, {
+			frame: lastValue(task.progressLog.frame),
+			fps: 0,
+			q: 0,
+			size: finalSize,
+			time: mediaTime,
+			bitrate: mediaTime > 0 && finalSize > 0 ? finalSize * 8 / mediaTime : 0,
+			speed: mediaTime > 0 ? mediaTime / elapsed : 0,
+		});
 	}
 
 	constructor() {
@@ -542,7 +659,7 @@ export class FFBoxService extends (EventEmitter as new () => TypedEventEmitter<F
 		// 更新命令行参数
 		if (isRemote) {
 			task.outputFiles = genTaskOutputFiles(task.after, ``);
-			task.paraArray = getFFmpegParaArray({ outputParams: task.after, withQuotes: true, overrideFilePaths: task.outputFiles });
+			task.paraArray = this.buildRemoteTaskFFmpegArgs(task);
 			task.status = TaskStatus.initializing;
 			task.remoteTask = true;
 		} else {
@@ -678,6 +795,15 @@ export class FFBoxService extends (EventEmitter as new () => TypedEventEmitter<F
 		return filePromises;
 	}
 
+	public async refreshTaskMetadata(id: number): Promise<InputInfo[]> {
+		const task = this.tasklist[id];
+		if (!task || task.kind !== 'ffmpeg') {
+			return [];
+		}
+		await Promise.allSettled(this.getFileMetadata(id, task));
+		return task.before || [];
+	}
+
 	/**
 	 * 对于远程文件，上传完成后调用此函数合并文件
 	 * 前端无论检查到已缓存还是未缓存都使用相同的参数调用。前端和后端各自判断文件是否已上传过。若使用过，前端不再上传，后端不再进行分片读取合并
@@ -728,7 +854,7 @@ export class FFBoxService extends (EventEmitter as new () => TypedEventEmitter<F
 				} as any;	// 看看这样会不会出 bug
 			}
 		}
-		task.paraArray = getFFmpegParaArray({ outputParams: task.after, withQuotes: true, overrideFilePaths: task.outputFiles });
+		task.paraArray = this.buildRemoteTaskFFmpegArgs(task);
 		this.setNotification(id, `任务「${task.taskName}」输入文件「${fileBaseName}」上传完成`, NotificationLevel.info);
 		this.emitTaskUpdate(id, task);
 	}
@@ -807,6 +933,7 @@ export class FFBoxService extends (EventEmitter as new () => TypedEventEmitter<F
 		}
 		task.status = TaskStatus.deleted;
 		delete this.tasklist[id];
+		this.progressOutputSizeProbe.delete(id);
 
 		// 清理帧扫描状态
 		for (const key of this.frameScanStatus.keys()) {
@@ -848,6 +975,7 @@ export class FFBoxService extends (EventEmitter as new () => TypedEventEmitter<F
 			elapsed: 0,
 			lastPaused: new Date().getTime() / 1000,
 		};
+		this.progressOutputSizeProbe.delete(id);
 		this.emit('progressUpdate', {
 			taskId: id,
 			time: new Date().getTime() / 1000,
@@ -862,7 +990,7 @@ export class FFBoxService extends (EventEmitter as new () => TypedEventEmitter<F
 		// const filePath = task.after.input.files[0].filePath!; // 需要上传完成，状态为 TASK_STOPPED 时才能开始任务，因此 filePath 非空
 		let newFFmpeg: FFmpeg;
 		if (task.remoteTask) {
-			const remoteArgs = getFFmpegParaArray({ outputParams: task.after, inputDir: `${os.tmpdir()}/FFBoxUploadCache`, overrideFilePaths: task.outputFiles.map((fileBaseName) => `${os.tmpdir()}/FFBoxDownloadCache/${fileBaseName}`) });
+			const remoteArgs = this.buildRemoteTaskFFmpegArgs(task, !!task.after.extra?.komorebiCpuFallbackTried);
 			task.paraArray = remoteArgs;
 			newFFmpeg = new FFmpeg(
 				this.ffmpegPath,
@@ -960,6 +1088,7 @@ export class FFBoxService extends (EventEmitter as new () => TypedEventEmitter<F
 						}
 					}
 					task.status = TaskStatus.finished;
+					this.appendFinalProgressStatus(id, task);
 					task.progressLog.elapsed = new Date().getTime() / 1000 - task.progressLog.lastStarted;
 					if (hasTimeError.length) {
 						this.setNotification(id, `任务「${task.taskName}」已转码完成，但修改第 ${hasTimeError.join(' ')} 个文件时间失败。`, NotificationLevel.warning);
@@ -977,6 +1106,9 @@ export class FFBoxService extends (EventEmitter as new () => TypedEventEmitter<F
 				} else {
 					this.setNotification(id, '任务「' + task.taskName + '」已正常中止。', NotificationLevel.warning);
 				}
+			}
+			if ([TaskStatus.finished, TaskStatus.error, TaskStatus.deleted].includes(task.status)) {
+				this.progressOutputSizeProbe.delete(id);
 			}
 			this.emitTaskUpdate(id, task);
 			this.queueAssign();
@@ -1373,6 +1505,7 @@ export class FFBoxService extends (EventEmitter as new () => TypedEventEmitter<F
 				reject(new Error('任务不存在'));
 				return;
 			}
+			this.progressOutputSizeProbe.delete(id);
 			let settled = false;
 			const resetToIdle = () => {
 				if (settled) return;
@@ -1557,7 +1690,7 @@ export class FFBoxService extends (EventEmitter as new () => TypedEventEmitter<F
 			if (task.remoteTask) {
 				// 如果修改了输出格式，需要重新计算 outputFile
 				task.outputFiles = genTaskOutputFiles(task.after, ``);
-				task.paraArray = getFFmpegParaArray({ outputParams: task.after, withQuotes: true, overrideFilePaths: task.outputFiles });
+				task.paraArray = this.buildRemoteTaskFFmpegArgs(task);
 			} else {
 				task.outputFiles = genTaskOutputFiles(task.after);
 				task.paraArray = this.buildTaskFFmpegArgs(task);

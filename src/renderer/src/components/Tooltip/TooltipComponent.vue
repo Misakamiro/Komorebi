@@ -46,13 +46,13 @@ const newLinedContent = computed(() => {
 			opacity: 0;
 		}
 		.tooltipanimate-enter-active {
-			transition: opacity 0.1s linear;
+			transition: opacity var(--motion-quick) ease;
 		}
 		.tooltipanimate-enter-to, .tooltipanimate-leave-from {
 			opacity: 1;
 		}
 		.tooltipanimate-leave-active {
-			transition: opacity 0.2s linear;
+			transition: opacity var(--motion-quick) ease;
 		}
 		.tooltipanimate-leave-to {
 			opacity: 0;

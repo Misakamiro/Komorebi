@@ -137,24 +137,24 @@ const handleDrop = () => {
 					to { opacity: 1; }
 				}
 				.bganimate-enter-active {
-					animation: bganimation ease-out 0.16s;
+					animation: bganimation var(--motion-standard) ease;
 				}
 				.bganimate-leave-active {
-					animation: bganimation ease-out 0.12s reverse;
+					animation: bganimation var(--motion-quick) var(--ease-exit) reverse;
 				}
 				.boxanimate-enter-from {
 					transform: translateY(8px);
 					opacity: 0;
 				}
 				.boxanimate-enter-active {
-					transition: transform ease-out 0.16s, opacity linear 0.12s;
+					transition: transform var(--motion-panel) var(--ease-elegant), opacity var(--motion-standard) ease;
 				}
 				.boxanimate-leave-to {
 					transform: translateY(6px);
 					opacity: 0;
 				}
 				.boxanimate-leave-active {
-					transition: transform ease-in 0.12s, opacity linear 0.10s;
+					transition: transform var(--motion-standard) var(--ease-exit), opacity var(--motion-quick) ease;
 				}
 				.loginBackground, .disconnectBackground {
 					position: absolute;
@@ -251,7 +251,7 @@ const handleDrop = () => {
 		opacity: 0;
 	}
 	.paraboxanim-enter-active, .paraboxanim-leave-active {
-		transition: transform 0.18s cubic-bezier(0.2, 0.9, 0.2, 1), opacity 0.14s ease;
+		transition: transform var(--motion-panel) var(--ease-elegant), opacity var(--motion-standard) ease;
 		will-change: transform, opacity;
 	}
 	.paraboxanim-enter-to, .paraboxanim-leave-from {

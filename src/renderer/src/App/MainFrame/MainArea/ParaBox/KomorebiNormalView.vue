@@ -7,14 +7,30 @@ import { TaskStatus, type InputInfo, type StreamInfo } from '@common/types';
 import i11n from '@common/i11n/i11n';
 import {
 	getKomorebiMediaHints,
+	getKomorebiEffectiveFrameRate,
+	getKomorebiEffectiveGifFps,
+	getKomorebiGifEncodeProfile,
+	getKomorebiOutputDimensions,
+	getKomorebiRecommendedFrameRate,
+	getKomorebiResolutionOptions,
+	komorebiGifMaxFps,
 	isKomorebiAudioFormatAvailable,
 	isKomorebiRemuxContainerAvailable,
 	isKomorebiVideoCodecAvailable,
 	isKomorebiVideoContainerAvailable,
 	komorebiAudioFormats,
+	komorebiEncodeSpeeds,
+	komorebiFrameRateOptions,
 	komorebiNcmFormats,
 	komorebiRemuxContainers,
+	komorebiVideoAspectRatios,
 	komorebiVideoContainers,
+	getKomorebiResolutionText,
+	parseKomorebiResolution,
+	type KomorebiFrameRate,
+	type KomorebiVideoPreset,
+	type KomorebiVideoResolution,
+	normalizeKomorebiRemuxPreset,
 	normalizeKomorebiVideoPreset,
 } from '@common/komorebiPresets';
 
@@ -24,6 +40,7 @@ const selectedTaskCount = computed(() => appStore.selectedTask.size);
 const selectedNcmTaskCount = computed(() => [...appStore.selectedTask].filter((id) => appStore.currentServer?.data.tasks[id]?.kind === 'ncm').length);
 const hasVideoExternalAudio = computed(() => appStore.komorebi.video.audioSource === 'external');
 const hasRemuxExternalAudio = computed(() => appStore.komorebi.remux.audioSource === 'external');
+const isGifVideoContainer = computed(() => appStore.komorebi.video.container === 'gif');
 const isVideoStream = (stream: StreamInfo) => `${stream.type || ''}`.toLowerCase() === 'video';
 const isAudioStream = (stream: StreamInfo) => `${stream.type || ''}`.toLowerCase() === 'audio';
 const tr = computed(() => {
@@ -33,9 +50,11 @@ const tr = computed(() => {
 const interactionPulseKey = ref(0);
 const actualSourceBytes = ref<number>();
 const actualOutputBytes = ref<number>();
+const metadataRefreshPending = ref(false);
 
+const selectedTaskId = computed(() => [...appStore.selectedTask][0]);
 const firstSelectedTask = computed(() => {
-	const id = [...appStore.selectedTask][0];
+	const id = selectedTaskId.value;
 	if (id !== undefined) {
 		return appStore.currentServer?.data.tasks[id];
 	}
@@ -74,6 +93,7 @@ const videoCodecOptions = [
 	{ value: 'av1', label: 'AV1' },
 	{ value: 'vp9', label: 'VP9' },
 	{ value: 'mpeg4', label: 'MPEG-4' },
+	{ value: 'gif', label: 'GIF' },
 ] as const;
 const videoContainerOptions = computed(() => komorebiVideoContainers.map((item) => ({
 	...item,
@@ -83,6 +103,156 @@ const videoCodecSelectOptions = computed(() => videoCodecOptions.map((item) => (
 	...item,
 	disabled: !isKomorebiVideoCodecAvailable(item.value, appStore.komorebi.video.container, hasKnownInput.value ? mediaHints.value : undefined),
 })));
+const videoAspectRatioOptions = computed(() => komorebiVideoAspectRatios.map((item) => ({
+	...item,
+	label: item.value === 'source' ? tr.value.options.aspectSource : `${tr.value.options.aspectStandard} ${item.label}`,
+})));
+const videoSourceDimensions = computed(() => {
+	const videoStream = videoInputInfo.value?.streams.find(isVideoStream) as StreamInfo | undefined;
+	return parseKomorebiResolution(videoStream?.resolution);
+});
+const videoSourceResolutionText = computed(() => {
+	const videoStream = videoInputInfo.value?.streams.find(isVideoStream) as StreamInfo | undefined;
+	return getKomorebiResolutionText(videoStream?.resolution);
+});
+const videoSourceResolutionKnown = computed(() => !!videoSourceResolutionText.value);
+const videoSourceResolutionPending = computed(() => metadataRefreshPending.value && !!firstTaskInputPath.value && !videoSourceResolutionKnown.value);
+const currentVideoPreset = computed(() => normalizeKomorebiVideoPreset({ ...appStore.komorebi.video }));
+const currentRemuxPreset = computed(() => normalizeKomorebiRemuxPreset({ ...appStore.komorebi.remux }));
+const videoSourceFps = computed(() => {
+	const videoStream = videoInputInfo.value?.streams.find(isVideoStream) as StreamInfo | undefined;
+	return Number.isFinite(videoStream?.fps) && videoStream!.fps! > 0 ? videoStream!.fps : undefined;
+});
+const getVideoPresetKey = (preset?: Partial<KomorebiVideoPreset>) => {
+	if (!preset) {
+		return '';
+	}
+	return [
+		preset.scene,
+		preset.codec,
+		preset.quality,
+		preset.container,
+		preset.audioSource,
+		preset.aspectRatio || 'source',
+		preset.resolution || 'source',
+		preset.frameRate || preset.gifFps || 'auto',
+		preset.encodeSpeed || 'balanced',
+	].join('|');
+};
+const currentVideoPresetKey = computed(() => getVideoPresetKey(currentVideoPreset.value));
+const appliedVideoPresetKey = computed(() => {
+	const preset = firstSelectedTask.value?.after?.extra?.komorebiPreset as Partial<KomorebiVideoPreset> | undefined;
+	return firstSelectedTask.value?.after?.extra?.komorebiWorkflow === 'video-compress'
+		? getVideoPresetKey(normalizeKomorebiVideoPreset(preset as any))
+		: '';
+});
+const isResolutionAboveSource = (resolution: KomorebiVideoResolution, aspectRatio = 'source') => {
+	if (resolution === 'source') {
+		return false;
+	}
+	if (videoSourceResolutionPending.value) {
+		return true;
+	}
+	if (!videoSourceResolutionKnown.value) {
+		return false;
+	}
+	const source = videoSourceDimensions.value;
+	const target = getKomorebiOutputDimensions(
+		source.width,
+		source.height,
+		{ aspectRatio: aspectRatio as any, resolution, quality: 2 },
+		'video',
+	);
+	return target.width > source.width + 1 || target.height > source.height + 1;
+};
+const buildResolutionOptions = (aspectRatio = 'source') => {
+	const sourceLabel = videoSourceResolutionKnown.value
+		? `${tr.value.options.resolutionSource} (${videoSourceResolutionText.value})`
+		: tr.value.options.resolutionSource;
+	return getKomorebiResolutionOptions(
+		aspectRatio as any,
+		videoSourceDimensions.value.width,
+		videoSourceDimensions.value.height,
+		sourceLabel,
+	).map((item) => {
+		const disabled = isResolutionAboveSource(item.value, aspectRatio);
+		return {
+			...item,
+			label: disabled
+				? `${item.label} (${videoSourceResolutionPending.value ? tr.value.options.resolutionReadingSource : tr.value.options.resolutionAboveSource(videoSourceResolutionText.value)})`
+				: item.label,
+			disabled,
+		};
+	});
+};
+const videoResolutionOptions = computed(() => buildResolutionOptions(currentVideoPreset.value.aspectRatio || 'source'));
+const remuxResolutionOptions = computed(() => buildResolutionOptions(currentRemuxPreset.value.aspectRatio || 'source'));
+const encodeSpeedOptions = computed(() => komorebiEncodeSpeeds.map((item) => ({
+	...item,
+	label: item.value === 'fast'
+		? tr.value.options.encodeSpeedFast
+		: item.value === 'low'
+			? tr.value.options.encodeSpeedLow
+			: tr.value.options.encodeSpeedBalanced,
+})));
+const formatFpsValue = (fps?: number) => {
+	if (!Number.isFinite(fps) || !fps) {
+		return '';
+	}
+	const rounded = Math.round(fps * 1000) / 1000;
+	return Number.isInteger(rounded) ? `${rounded}` : rounded.toFixed(3).replace(/0+$/, '').replace(/\.$/, '');
+};
+const sourceFpsLimit = (fps?: number) => Number.isFinite(fps) && fps! > 0 ? fps! : undefined;
+const isFrameRateAboveSource = (fps: unknown, sourceFps?: number) => (
+	typeof fps === 'number' &&
+	sourceFpsLimit(sourceFps) !== undefined &&
+	fps > sourceFpsLimit(sourceFps)! + 0.0001
+);
+const buildFrameRateOptions = (mode: 'video' | 'remux') => {
+	const sourceFps = videoSourceFps.value;
+	const sourceFpsText = formatFpsValue(sourceFps);
+	const isAboveSource = (fps: unknown) => isFrameRateAboveSource(fps, sourceFps);
+	if (mode === 'video' && isGifVideoContainer.value) {
+		const autoFps = getKomorebiRecommendedFrameRate(currentVideoPreset.value, videoSourceFps.value, 'video');
+		return komorebiFrameRateOptions.map((item) => ({
+			...item,
+			label: item.value === 'auto'
+				? autoFps ? `${tr.value.options.frameRateAuto} (${formatFpsValue(autoFps)} FPS)` : tr.value.options.frameRateAuto
+				: typeof item.value === 'number' && item.value > komorebiGifMaxFps
+					? `${item.label} (${tr.value.options.frameRateLimited(komorebiGifMaxFps)})`
+				: isAboveSource(item.value)
+					? `${item.label} (${tr.value.options.frameRateAboveSource(sourceFpsText)})`
+				: getKomorebiEffectiveGifFps(currentVideoPreset.value.quality, item.value, videoSourceFps.value) + 0.001 < Number(item.value)
+					? `${item.label} (${tr.value.options.frameRateLimited(getKomorebiEffectiveGifFps(currentVideoPreset.value.quality, item.value, videoSourceFps.value))})`
+					: item.label,
+			disabled: typeof item.value === 'number' && (item.value > komorebiGifMaxFps || isAboveSource(item.value)),
+		}));
+	}
+	const sourceFpsLabel = sourceFps ? ` (${sourceFpsText} FPS)` : '';
+	const autoFps = getKomorebiRecommendedFrameRate(
+		mode === 'video' ? currentVideoPreset.value : currentRemuxPreset.value,
+		videoSourceFps.value,
+		mode,
+	);
+	return komorebiFrameRateOptions.map((item) => {
+		const effectiveFps = getKomorebiEffectiveFrameRate(item.value, videoSourceFps.value);
+		return {
+			...item,
+			label: item.value === 'auto'
+				? mode === 'remux'
+					? `${tr.value.options.frameRateSource}${sourceFpsLabel}`
+					: autoFps ? `${tr.value.options.frameRateAuto} (${formatFpsValue(autoFps)} FPS)` : tr.value.options.frameRateAuto
+				: isAboveSource(item.value)
+					? `${item.label} (${tr.value.options.frameRateAboveSource(sourceFpsText)})`
+				: effectiveFps && effectiveFps + 0.001 < Number(item.value)
+					? `${item.label} (${tr.value.options.frameRateLimited(effectiveFps)})`
+					: item.label,
+			disabled: isAboveSource(item.value),
+		};
+	});
+};
+const videoFrameRateOptions = computed(() => buildFrameRateOptions('video'));
+const remuxFrameRateOptions = computed(() => buildFrameRateOptions('remux'));
 const audioFormatOptions = computed(() => komorebiAudioFormats.map((item) => ({
 	...item,
 	disabled: !isKomorebiAudioFormatAvailable(item.value, hasKnownInput.value ? mediaHints.value : undefined),
@@ -111,7 +281,7 @@ const getLocalFileSize = async (path?: string) => {
 };
 const estimateSourceBytes = (input: InputInfo) => {
 	const videoStream = input.streams.find(isVideoStream) as StreamInfo | undefined;
-	const [width = 1920, height = 1080] = (videoStream?.resolution || '1920x1080').split('x').map((value) => Number.parseInt(value, 10));
+	const { width, height } = parseKomorebiResolution(videoStream?.resolution);
 	const pixels = Math.max(1, width * height);
 	const baseKbps = pixels >= 3840 * 2160 ? 8000 : pixels >= 1920 * 1080 ? 4000 : pixels >= 1280 * 720 ? 2000 : 1000;
 	const sourceBitrate = input.bitrate || videoStream?.bitrate || baseKbps * 1.5;
@@ -144,11 +314,101 @@ const getRatioText = (sourceSize: number, outputSize: number, actual = false) =>
 	}
 	return actual ? tr.value.estimate.actualFlat : tr.value.estimate.flat;
 };
+const clampNumber = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
+const codecEfficiency = (codec: string) => {
+	const normalized = codec.toLowerCase();
+	if (/av1/.test(normalized)) return 1.85;
+	if (/hevc|h265|x265/.test(normalized)) return 1.55;
+	if (/vp9/.test(normalized)) return 1.35;
+	if (/h264|avc|x264/.test(normalized)) return 1;
+	if (/mpeg4|mp4v/.test(normalized)) return 0.62;
+	if (/mpeg|h263|wmv|vc1|flv/.test(normalized)) return 0.5;
+	return 0.86;
+};
+const targetReferenceKbps = (codec: string, quality: number) => {
+	const q = clampNumber(quality, 1, 4);
+	const table: Record<string, Record<number, number>> = {
+		av1: { 1: 2800, 2: 1750, 3: 1100, 4: 680 },
+		hevc: { 1: 3400, 2: 2200, 3: 1400, 4: 860 },
+		vp9: { 1: 3800, 2: 2400, 3: 1550, 4: 950 },
+		h264: { 1: 5200, 2: 3400, 3: 2150, 4: 1320 },
+		mpeg4: { 1: 6800, 2: 4500, 3: 2850, 4: 1750 },
+	};
+	const key = codec === 'av1' || codec === 'hevc' || codec === 'vp9' || codec === 'h264' || codec === 'mpeg4'
+		? codec
+		: 'h264';
+	return table[key][q] || table.h264[2];
+};
+const qualitySourceFactor = (quality: number) => ({ 1: 0.92, 2: 0.62, 3: 0.42, 4: 0.28 } as Record<number, number>)[quality] || 0.62;
+const sceneBitrateFactor = (scene: string) => {
+	if (scene === 'anime') return 0.86;
+	if (scene === 'screen') return 0.78;
+	return 1;
+};
+const estimateGifBytes = (
+	duration: number,
+	sourceBytes: number,
+	sourceKbps: number,
+	targetPixels: number,
+	quality: number,
+	scene: string,
+	fps: number,
+) => {
+	const frames = Math.max(1, duration * fps);
+	const bytesPerPixelFrame: Record<number, number> = { 1: 0.019, 2: 0.012, 3: 0.008, 4: 0.0052 };
+	const sceneFactor = scene === 'screen' ? 0.72 : scene === 'anime' ? 0.82 : 1;
+	const sourceComplexity = clampNumber(sourceKbps / 3500, 0.55, 1.25);
+	const estimatedByFrames = frames * targetPixels * (bytesPerPixelFrame[quality] || 0.012) * sceneFactor * sourceComplexity;
+	const sourceCap: Record<number, number> = { 1: 0.16, 2: 0.095, 3: 0.062, 4: 0.038 };
+	const cap = sourceBytes * (sourceCap[quality] || 0.095);
+	return clampNumber(estimatedByFrames, 128 * 1024, Math.max(512 * 1024, cap));
+};
+const estimateVideoBytes = (
+	duration: number,
+	sourceBytes: number,
+	sourceKbps: number,
+	sourceCodec: string,
+	targetCodec: string,
+	sourcePixels: number,
+	targetPixels: number,
+	sourceFps: number,
+	targetFps: number,
+	quality: number,
+	scene: string,
+	audioKbps: number,
+) => {
+	const pixelRatio = clampNumber(targetPixels / sourcePixels, 0.05, 3);
+	const fpsRatio = clampNumber(targetFps / sourceFps, 0.05, 1.5);
+	const sourceGuidedKbps = sourceKbps
+		* (codecEfficiency(sourceCodec) / codecEfficiency(targetCodec))
+		* Math.pow(pixelRatio, 0.74)
+		* Math.pow(fpsRatio, 0.58)
+		* qualitySourceFactor(quality)
+		* sceneBitrateFactor(scene);
+	const referenceKbps = targetReferenceKbps(targetCodec, quality)
+		* Math.pow(targetPixels / (1920 * 1080), 0.82)
+		* Math.pow(targetFps / 30, 0.55)
+		* sceneBitrateFactor(scene);
+	const sourceDensity = sourceKbps / Math.max(250, referenceKbps * (codecEfficiency(targetCodec) / Math.max(0.5, codecEfficiency(sourceCodec))));
+	const sourceWeight = sourceDensity < 0.65 ? 0.78 : sourceDensity > 1.55 ? 0.45 : 0.62;
+	const rawTargetKbps = sourceGuidedKbps * sourceWeight + referenceKbps * (1 - sourceWeight);
+	const lowerBound = Math.max(120, referenceKbps * 0.22);
+	const upperBound = sourceKbps * (pixelRatio > 1.05 ? 1.7 : quality <= 2 ? 1.18 : 1.02);
+	const targetVideoKbps = clampNumber(rawTargetKbps, Math.min(lowerBound, upperBound), Math.max(lowerBound, upperBound));
+	return Math.max(64 * 1024, (targetVideoKbps + audioKbps) * duration * 1000 / 8);
+};
 
 const estimateVideoSize = computed(() => {
 	const input = videoInputInfo.value;
+	const videoPreset = currentVideoPreset.value;
+	currentVideoPresetKey.value;
 	const sourceBytes = input ? input.size || actualSourceBytes.value || estimateSourceBytes(input) : undefined;
-	if (firstSelectedTask.value?.status === TaskStatus.finished && actualOutputBytes.value && sourceBytes) {
+	const canUseActualResult = firstSelectedTask.value?.status === TaskStatus.finished
+		&& appliedVideoPresetKey.value
+		&& appliedVideoPresetKey.value === currentVideoPresetKey.value
+		&& actualOutputBytes.value
+		&& sourceBytes;
+	if (canUseActualResult) {
 		return tr.value.estimate.actualSummary(
 			formatSize(actualOutputBytes.value, appStore.frontendSettings.useIEC),
 			formatSize(sourceBytes, appStore.frontendSettings.useIEC),
@@ -159,52 +419,52 @@ const estimateVideoSize = computed(() => {
 		return tr.value.estimate.waiting;
 	}
 	const videoStream = input.streams.find(isVideoStream) as StreamInfo | undefined;
-	const [width = 1920, height = 1080] = (videoStream?.resolution || '1920x1080').split('x').map((value) => Number.parseInt(value, 10));
+	const { width, height } = parseKomorebiResolution(videoStream?.resolution);
 	const pixels = Math.max(1, width * height);
-	const baseKbps = pixels >= 3840 * 2160 ? 8000 : pixels >= 1920 * 1080 ? 4000 : pixels >= 1280 * 720 ? 2000 : 1000;
-	const sourceBitrate = input.bitrate || videoStream?.bitrate || baseKbps * 1.5;
-	if (!Number.isFinite(input.duration) || input.duration <= 0 || !Number.isFinite(sourceBitrate) || sourceBitrate <= 0) {
+	const sourceKbps = sourceBytes * 8 / 1000 / input.duration;
+	if (!Number.isFinite(input.duration) || input.duration <= 0 || !Number.isFinite(sourceKbps) || sourceKbps <= 0) {
 		return tr.value.estimate.unknown;
 	}
 	const sourceCodec = (videoStream?.codec || '').toLowerCase();
-	const targetCodec = appStore.komorebi.video.container === 'webm' ? 'av1' : appStore.komorebi.video.codec;
-	const sourceEfficiency = /mpeg|h263|wmv/.test(sourceCodec) ? 0.45
-		: /h264|avc/.test(sourceCodec) ? 0.78
-			: /hevc|h265/.test(sourceCodec) ? 1
-				: /av1/.test(sourceCodec) ? 1.16
-					: /vp9/.test(sourceCodec) ? 1.08
-						: 0.9;
-	const targetEfficiency = targetCodec === 'av1' ? 1.18
-		: targetCodec === 'hevc' ? 1.05
-			: targetCodec === 'vp9' ? 1.02
-				: targetCodec === 'h264' ? 0.82
-					: 0.68;
-	const sceneFactor = appStore.komorebi.video.scene === 'anime' ? 0.88
-		: appStore.komorebi.video.scene === 'screen' ? 0.94
-			: 1;
-	const qualityFactor: Record<number, number> = { 1: 1.08, 2: 0.78, 3: 0.55, 4: 0.38 };
-	const quality = qualityFactor[appStore.komorebi.video.quality] ?? 0.8;
-	const codecRatio = sourceEfficiency / targetEfficiency;
+	const targetCodec = videoPreset.container === 'gif' ? 'gif'
+		: videoPreset.codec;
+	const outputDimensions = getKomorebiOutputDimensions(width, height, videoPreset, targetCodec === 'gif' ? 'gif' : 'video');
+	const targetPixels = Math.max(1, outputDimensions.width * outputDimensions.height);
 	if (!Number.isFinite(sourceBytes) || sourceBytes <= 0) {
 		return tr.value.estimate.unknown;
 	}
-	const sourceActualMb = sourceBytes / 1024 / 1024;
-	const sourceActualKbps = sourceBytes * 8 / 1000 / input.duration;
-	const sourceAnchoredMb = sourceActualMb * codecRatio * quality * sceneFactor;
-	const resolutionAnchoredMb = baseKbps * quality * sceneFactor * input.duration / 8192;
-	const lowBitratePressure = Math.max(0, Math.min(1, (0.75 - sourceActualKbps / baseKbps) / 0.55));
-	const highResolutionPressure = pixels >= 3840 * 2160 ? 0.15 : pixels >= 1920 * 1080 ? 0.08 : 0;
-	const resolutionWeight = Math.min(0.78, 0.22 + lowBitratePressure * 0.45 + highResolutionPressure);
-	const hardwareQualityReserve = pixels >= 3840 * 2160 && ['h264', 'hevc', 'av1'].includes(targetCodec) ? 1.08 : 1;
-	const targetAudioMb = appStore.komorebi.video.audioSource === 'none' ? 0 : input.duration * 192 / 8192;
-	const estimatedMb = Math.max(
-		(sourceAnchoredMb * (1 - resolutionWeight) + resolutionAnchoredMb * resolutionWeight) * hardwareQualityReserve + targetAudioMb,
-		sourceActualMb * 0.04,
+	if (targetCodec === 'gif') {
+		const profile = getKomorebiGifEncodeProfile(videoPreset.quality, videoPreset.frameRate || videoPreset.gifFps, videoStream?.fps);
+		const estimatedBytes = estimateGifBytes(input.duration, sourceBytes, sourceKbps, targetPixels, videoPreset.quality, videoPreset.scene, profile.fps);
+		return tr.value.estimate.summary(
+			formatSize(estimatedBytes, appStore.frontendSettings.useIEC),
+			formatSize(sourceBytes, appStore.frontendSettings.useIEC),
+			getRatioText(sourceBytes, estimatedBytes),
+		);
+	}
+	const sourceFps = Number.isFinite(videoStream?.fps) && videoStream!.fps! > 0 ? videoStream!.fps! : undefined;
+	const effectiveSourceFps = sourceFps || 30;
+	const targetFps = videoPreset.frameRate === 'auto'
+		? getKomorebiRecommendedFrameRate(videoPreset, sourceFps, 'video') || effectiveSourceFps
+		: getKomorebiEffectiveFrameRate(videoPreset.frameRate, sourceFps) || effectiveSourceFps;
+	const audioKbps = videoPreset.audioSource === 'none' || videoPreset.container === 'gif' ? 0 : 192;
+	const estimatedBytes = estimateVideoBytes(
+		input.duration,
+		sourceBytes,
+		sourceKbps,
+		sourceCodec,
+		targetCodec,
+		pixels,
+		targetPixels,
+		effectiveSourceFps,
+		targetFps,
+		videoPreset.quality,
+		videoPreset.scene,
+		audioKbps,
 	);
-	if (!Number.isFinite(estimatedMb) || estimatedMb < 0) {
+	if (!Number.isFinite(estimatedBytes) || estimatedBytes < 0) {
 		return tr.value.estimate.unknown;
 	}
-	const estimatedBytes = estimatedMb * 1024 * 1024;
 	return tr.value.estimate.summary(
 		formatSize(estimatedBytes, appStore.frontendSettings.useIEC),
 		formatSize(sourceBytes, appStore.frontendSettings.useIEC),
@@ -234,11 +494,18 @@ const chooseOutputDir = async (target: 'video' | 'audio' | 'remux' | 'ncm') => {
 	if (target === 'ncm') appStore.komorebi.ncm.outputDir = dir;
 };
 
-const pickFirstEnabled = <T extends { value: string; disabled?: boolean }>(items: T[], current: string) => {
+const pickFirstEnabled = <T extends { value: string | number; disabled?: boolean }>(items: T[], current: string | number) => {
 	if (items.some((item) => item.value === current && !item.disabled)) {
 		return current;
 	}
 	return items.find((item) => !item.disabled)?.value || current;
+};
+const pickClosestFrameRate = (items: Array<{ value: KomorebiFrameRate; disabled?: boolean }>, current: KomorebiFrameRate | string | number | undefined) => {
+	const normalizedCurrent = typeof current === 'string' && current !== 'auto' ? Number(current) as KomorebiFrameRate : current;
+	if (items.some((item) => item.value === normalizedCurrent && !item.disabled)) {
+		return normalizedCurrent || 'auto';
+	}
+	return 'auto';
 };
 const pulseInteraction = () => {
 	interactionPulseKey.value++;
@@ -256,15 +523,76 @@ const chooseExternalAudioWithPulse = async (target: 'video' | 'remux') => {
 	await chooseExternalAudio(target);
 };
 
+const metadataRefreshKeys = new Set<string>();
+let metadataRefreshSerial = 0;
+watch(
+	() => ({
+		id: selectedTaskId.value,
+		path: firstTaskInputPath.value,
+		serverId: appStore.currentServer?.data.id,
+	}),
+	async ({ id, path, serverId }) => {
+		if (id === undefined || !path || !serverId) {
+			metadataRefreshPending.value = false;
+			return;
+		}
+		const server = appStore.currentServer;
+		if (!server?.entity?.refreshTaskMetadata) {
+			metadataRefreshPending.value = false;
+			return;
+		}
+		const key = `${serverId}:${id}:${path}`;
+		if (metadataRefreshKeys.has(key)) {
+			metadataRefreshPending.value = false;
+			return;
+		}
+		metadataRefreshKeys.add(key);
+		const serial = ++metadataRefreshSerial;
+		metadataRefreshPending.value = true;
+		const before = await server.entity.refreshTaskMetadata(id).catch(() => undefined);
+		if (serial === metadataRefreshSerial && appStore.currentServer?.data.id === serverId && selectedTaskId.value === id) {
+			metadataRefreshPending.value = false;
+		}
+		const hasMediaInfo = before?.some((input) => input.streams?.length);
+		if (!hasMediaInfo) {
+			metadataRefreshKeys.delete(key);
+			return;
+		}
+		const task = appStore.currentServer?.data.tasks[id];
+		if (serial === metadataRefreshSerial && appStore.currentServer?.data.id === serverId && task) {
+			task.before = before;
+		}
+	},
+	{ immediate: true },
+);
 watch(videoContainerOptions, (items) => {
 	appStore.komorebi.video.container = pickFirstEnabled(items, appStore.komorebi.video.container) as any;
 }, { immediate: true });
 watch(() => appStore.komorebi.video.container, () => {
 	const normalized = normalizeKomorebiVideoPreset(appStore.komorebi.video);
 	appStore.komorebi.video.codec = normalized.codec;
+	appStore.komorebi.video.audioSource = normalized.audioSource;
 }, { immediate: true });
 watch(videoCodecSelectOptions, (items) => {
 	appStore.komorebi.video.codec = pickFirstEnabled(items, appStore.komorebi.video.codec) as any;
+}, { immediate: true });
+watch(videoFrameRateOptions, (items) => {
+	const nextFrameRate = pickClosestFrameRate(items, appStore.komorebi.video.frameRate || appStore.komorebi.video.gifFps);
+	appStore.komorebi.video.frameRate = nextFrameRate;
+	appStore.komorebi.video.gifFps = nextFrameRate;
+}, { immediate: true });
+watch(remuxFrameRateOptions, (items) => {
+	appStore.komorebi.remux.frameRate = pickClosestFrameRate(items, appStore.komorebi.remux.frameRate);
+}, { immediate: true });
+watch(videoResolutionOptions, (items) => {
+	appStore.komorebi.video.resolution = pickFirstEnabled(items, appStore.komorebi.video.resolution || 'source') as KomorebiVideoResolution;
+}, { immediate: true });
+watch(remuxResolutionOptions, (items) => {
+	appStore.komorebi.remux.resolution = pickFirstEnabled(items, appStore.komorebi.remux.resolution || 'source') as KomorebiVideoResolution;
+}, { immediate: true });
+watch(encodeSpeedOptions, (items) => {
+	appStore.komorebi.video.encodeSpeed = pickFirstEnabled(items, appStore.komorebi.video.encodeSpeed || 'balanced') as any;
+	appStore.komorebi.remux.encodeSpeed = pickFirstEnabled(items, appStore.komorebi.remux.encodeSpeed || 'balanced') as any;
 }, { immediate: true });
 watch(audioFormatOptions, (items) => {
 	appStore.komorebi.audio.format = pickFirstEnabled(items, appStore.komorebi.audio.format) as any;
@@ -337,7 +665,7 @@ watch(
 				</label>
 				<label>
 					<span>{{ tr.fields.encoder }}</span>
-					<select v-model="appStore.komorebi.video.codec" @change="replayInteractionPulse">
+					<select v-model="appStore.komorebi.video.codec" :disabled="isGifVideoContainer" @change="replayInteractionPulse">
 						<option v-for="item in videoCodecSelectOptions" :key="item.value" :value="item.value" :disabled="item.disabled">{{ item.label }}</option>
 					</select>
 				</label>
@@ -357,8 +685,32 @@ watch(
 					</select>
 				</label>
 				<label>
+					<span>{{ tr.fields.encodeSpeed }}</span>
+					<select v-model="appStore.komorebi.video.encodeSpeed" @change="replayInteractionPulse">
+						<option v-for="item in encodeSpeedOptions" :key="item.value" :value="item.value">{{ item.label }}</option>
+					</select>
+				</label>
+				<label>
+					<span>{{ tr.fields.frameRate }}</span>
+					<select v-model="appStore.komorebi.video.frameRate" @change="() => { appStore.komorebi.video.gifFps = appStore.komorebi.video.frameRate; replayInteractionPulse(); }">
+						<option v-for="item in videoFrameRateOptions" :key="item.value" :value="item.value" :disabled="item.disabled">{{ item.label }}</option>
+					</select>
+				</label>
+				<label>
+					<span>{{ tr.fields.aspectRatio }}</span>
+					<select v-model="appStore.komorebi.video.aspectRatio" @change="replayInteractionPulse">
+						<option v-for="item in videoAspectRatioOptions" :key="item.value" :value="item.value">{{ item.label }}</option>
+					</select>
+				</label>
+				<label>
+					<span>{{ tr.fields.resolution }}</span>
+					<select v-model="appStore.komorebi.video.resolution" @change="replayInteractionPulse">
+						<option v-for="item in videoResolutionOptions" :key="`${item.value}-${item.label}`" :value="item.value" :disabled="item.disabled">{{ item.label }}</option>
+					</select>
+				</label>
+				<label :class="{ disabled: isGifVideoContainer }">
 					<span>{{ tr.fields.audioTrack }}</span>
-					<select v-model="appStore.komorebi.video.audioSource" @change="replayInteractionPulse">
+					<select v-model="appStore.komorebi.video.audioSource" :disabled="isGifVideoContainer" @change="replayInteractionPulse">
 						<option value="source">{{ tr.options.keepSourceAudio }}</option>
 						<option value="none">{{ tr.options.muteVideo }}</option>
 						<option value="external">{{ tr.options.useExternalAudio }}</option>
@@ -422,6 +774,30 @@ watch(
 					<span>{{ tr.fields.targetContainer }}</span>
 					<select v-model="appStore.komorebi.remux.container" @change="replayInteractionPulse">
 						<option v-for="item in remuxContainerOptions" :key="item.value" :value="item.value" :disabled="item.disabled">{{ item.label }}</option>
+					</select>
+				</label>
+				<label>
+					<span>{{ tr.fields.aspectRatio }}</span>
+					<select v-model="appStore.komorebi.remux.aspectRatio" @change="replayInteractionPulse">
+						<option v-for="item in videoAspectRatioOptions" :key="item.value" :value="item.value">{{ item.label }}</option>
+					</select>
+				</label>
+				<label>
+					<span>{{ tr.fields.resolution }}</span>
+					<select v-model="appStore.komorebi.remux.resolution" @change="replayInteractionPulse">
+						<option v-for="item in remuxResolutionOptions" :key="`${item.value}-${item.label}`" :value="item.value" :disabled="item.disabled">{{ item.label }}</option>
+					</select>
+				</label>
+				<label>
+					<span>{{ tr.fields.frameRate }}</span>
+					<select v-model="appStore.komorebi.remux.frameRate" @change="replayInteractionPulse">
+						<option v-for="item in remuxFrameRateOptions" :key="item.value" :value="item.value" :disabled="item.disabled">{{ item.label }}</option>
+					</select>
+				</label>
+				<label>
+					<span>{{ tr.fields.encodeSpeed }}</span>
+					<select v-model="appStore.komorebi.remux.encodeSpeed" @change="replayInteractionPulse">
+						<option v-for="item in encodeSpeedOptions" :key="item.value" :value="item.value">{{ item.label }}</option>
 					</select>
 				</label>
 				<label>
@@ -522,7 +898,7 @@ watch(
 		font-size: 12px;
 		line-height: 20px;
 		color: var(--66);
-		transition: color 0.16s ease, transform 0.16s ease, opacity 0.16s ease;
+		transition: color var(--motion-standard) ease, transform var(--motion-standard) var(--ease-elegant), opacity var(--motion-standard) ease;
 	}
 	.panel {
 		max-width: 1120px;
@@ -532,7 +908,7 @@ watch(
 		background: hwb(var(--bg99) / 0.78);
 		border: 1px solid hwb(var(--bg90) / 0.46);
 		box-shadow: 0 1px 4px hwb(var(--hoverShadow) / 0.08);
-		animation: panelSettle 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+		animation: panelSettle var(--motion-panel) var(--ease-elegant);
 		transform-origin: top center;
 		will-change: transform, opacity;
 	}
@@ -546,19 +922,21 @@ watch(
 		flex-direction: column;
 		gap: 6px;
 		font-size: 13px;
-		animation: fieldSettle 0.18s cubic-bezier(0.16, 1, 0.3, 1) both;
-		transition: opacity 0.14s ease, transform 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+		animation: fieldSettle var(--motion-soft) var(--ease-elegant) both;
+		transition: opacity var(--motion-panel) ease, transform var(--motion-panel) var(--ease-elegant);
 		will-change: transform, opacity;
-		&:nth-child(2) { animation-delay: 0.015s; }
-		&:nth-child(3) { animation-delay: 0.03s; }
-		&:nth-child(4) { animation-delay: 0.045s; }
-		&:nth-child(5) { animation-delay: 0.06s; }
-		&:nth-child(6) { animation-delay: 0.075s; }
-		&:nth-child(7) { animation-delay: 0.09s; }
-		&:nth-child(8) { animation-delay: 0.105s; }
+		&:nth-child(2) { animation-delay: 0.05s; }
+		&:nth-child(3) { animation-delay: 0.1s; }
+		&:nth-child(4) { animation-delay: 0.15s; }
+		&:nth-child(5) { animation-delay: 0.2s; }
+		&:nth-child(6) { animation-delay: 0.25s; }
+		&:nth-child(7) { animation-delay: 0.3s; }
+		&:nth-child(8) { animation-delay: 0.35s; }
+		&:nth-child(9) { animation-delay: 0.4s; }
+		&:nth-child(10) { animation-delay: 0.45s; }
 		span {
 			color: var(--66);
-			transition: color 0.16s ease, opacity 0.16s ease;
+			transition: color var(--motion-standard) ease, opacity var(--motion-standard) ease;
 		}
 		&.disabled {
 			opacity: 0.55;
@@ -576,7 +954,7 @@ watch(
 		color: var(--33);
 		outline: none;
 		box-shadow: 0 1px 2px hwb(var(--hoverShadow) / 0.05);
-		transition: border-color 0.14s ease, box-shadow 0.14s ease, background 0.14s ease, transform 0.16s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.14s ease;
+		transition: border-color var(--motion-panel) ease, box-shadow var(--motion-panel) ease, background var(--motion-panel) ease, transform var(--motion-panel) var(--ease-elegant), opacity var(--motion-standard) ease;
 		will-change: transform;
 		&:hover {
 			border-color: hwb(var(--primaryColor) / 0.28);
@@ -589,7 +967,7 @@ watch(
 		}
 		&:active {
 			transform: scale(0.995);
-			transition-duration: 0.06s;
+			transition-duration: var(--motion-press);
 		}
 		&:disabled {
 			opacity: 0.62;
@@ -609,7 +987,7 @@ watch(
 			border-radius: 6px;
 			background: hwb(var(--primaryColor) / 0.08);
 			color: hwb(var(--primaryColor));
-			transition: background 0.14s ease, transform 0.16s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.14s ease, opacity 0.14s ease;
+			transition: background var(--motion-standard) ease, transform var(--motion-standard) var(--ease-elegant), box-shadow var(--motion-standard) ease, opacity var(--motion-standard) ease;
 			will-change: transform;
 			&:hover:not(:disabled) {
 				background: hwb(var(--primaryColor) / 0.13);
@@ -618,7 +996,7 @@ watch(
 			}
 			&:active:not(:disabled) {
 				transform: scale(0.98);
-				transition-duration: 0.06s;
+				transition-duration: var(--motion-press);
 			}
 			&:disabled {
 				opacity: 0.55;
@@ -634,7 +1012,7 @@ watch(
 			width: 16px;
 			height: 16px;
 			accent-color: hwb(var(--primaryColor));
-			transition: transform 0.14s ease, filter 0.14s ease;
+			transition: transform var(--motion-standard) var(--ease-elegant), filter var(--motion-standard) ease;
 			&:checked {
 				transform: scale(1.05);
 				filter: drop-shadow(0 2px 4px hwb(var(--primaryColor) / 0.18));
@@ -661,7 +1039,7 @@ watch(
 		display: flex;
 		align-items: center;
 		box-sizing: border-box;
-		transition: background 0.16s ease, color 0.16s ease, transform 0.16s ease, box-shadow 0.16s ease;
+		transition: background var(--motion-standard) ease, color var(--motion-standard) ease, transform var(--motion-standard) var(--ease-elegant), box-shadow var(--motion-standard) ease;
 		&.summary {
 			margin: 0 0 14px;
 			min-height: 34px;
@@ -684,14 +1062,14 @@ watch(
 		padding: 0 18px;
 		border-radius: 8px;
 		font-size: 14px;
-		transition: background 0.14s ease, transform 0.16s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.14s ease, opacity 0.14s ease;
+		transition: background var(--motion-standard) ease, transform var(--motion-standard) var(--ease-elegant), box-shadow var(--motion-standard) ease, opacity var(--motion-standard) ease;
 		will-change: transform;
 		&:hover:not(:disabled) {
 			transform: translateY(-1px);
 		}
 		&:active:not(:disabled) {
 			transform: scale(0.98);
-			transition-duration: 0.06s;
+			transition-duration: var(--motion-press);
 		}
 	}
 	.primary {
@@ -713,7 +1091,7 @@ watch(
 	.hintPulse-leave-active,
 	.estimatePulse-enter-active,
 	.estimatePulse-leave-active {
-		transition: opacity 0.12s ease, transform 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+		transition: opacity var(--motion-panel) ease, transform var(--motion-soft) var(--ease-elegant);
 	}
 	.hintPulse-enter-from,
 	.hintPulse-leave-to,

@@ -19,7 +19,7 @@ const MsgboxComponent: FunctionalComponent<Props> = (props) => {
 	}, 0);
 
 	const mouseDownTransformStyle = computed(() => (
-		backgroundMouseDown.value ? { transform: 'scale(0.97)', transition: 'all cubic-bezier(0.1, 2.5, 0.6, 1) 0.5s' } : {})
+		backgroundMouseDown.value ? { transform: 'scale(0.97)', transition: 'all var(--ease-elegant) var(--motion-standard)' } : {})
 	);
 
 	const handleKeyPress = (e: KeyboardEvent) => {

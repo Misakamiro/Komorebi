@@ -243,15 +243,15 @@ const handleDelete = (serverId: string, notificationId: number) => {
 		}
 	}
 	.trans-enter-active {
-		transition: opacity 0.3s, transform 0.3s cubic-bezier(0.2, 1.0, 0.3, 1);
+		transition: opacity var(--motion-panel), transform var(--motion-panel) var(--ease-elegant);
 		.container {
-			transition: opacity 0.3s, transform 0.3s cubic-bezier(0.2, 1.0, 0.3, 1);
+			transition: opacity var(--motion-panel), transform var(--motion-panel) var(--ease-elegant);
 		}
 	}
 	.trans-leave-active {
-		transition: opacity 0.3s, transform 0.3s cubic-bezier(0.5, 0, 1, 1);
+		transition: opacity var(--motion-standard), transform var(--motion-standard) var(--ease-exit);
 		.container {
-			transition: opacity 0.3s, transform 0.3s cubic-bezier(0.5, 0, 1, 1);
+			transition: opacity var(--motion-standard), transform var(--motion-standard) var(--ease-exit);
 		}
 	}
 </style>

@@ -70,7 +70,7 @@ const workflowButtons = computed<{ value: KomorebiWorkflow; label: string }[]>((
 					background: transparent;
 					color: var(--66);
 					font-size: 13px;
-					transition: background 0.16s ease, color 0.16s ease, box-shadow 0.16s ease, transform 0.16s cubic-bezier(0.2, 0.9, 0.2, 1);
+					transition: background var(--motion-standard) ease, color var(--motion-standard) ease, box-shadow var(--motion-standard) ease, transform var(--motion-standard) var(--ease-elegant);
 					will-change: background, color, transform;
 					&:last-child {
 						border-right: none;
@@ -86,7 +86,7 @@ const workflowButtons = computed<{ value: KomorebiWorkflow; label: string }[]>((
 					}
 					&:active {
 						transform: scale(0.98);
-						transition-duration: 0.06s;
+						transition-duration: var(--motion-press);
 					}
 				}
 			}
@@ -97,7 +97,7 @@ const workflowButtons = computed<{ value: KomorebiWorkflow; label: string }[]>((
 		}
 		.workflowPanel-enter-active,
 		.workflowPanel-leave-active {
-			transition: opacity 0.16s ease, transform 0.20s cubic-bezier(0.2, 0.9, 0.2, 1), filter 0.20s ease;
+			transition: opacity var(--motion-standard) ease, transform var(--motion-panel) var(--ease-elegant), filter var(--motion-panel) ease;
 			will-change: opacity, transform;
 		}
 		.workflowPanel-leave-active {

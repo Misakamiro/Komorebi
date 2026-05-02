@@ -174,7 +174,7 @@ onMounted(() => {
 		background: var(--f7);
 		border: #AAA 1px solid;
 		box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
-		transition: background-color 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s cubic-bezier(0.2, 0.9, 0.2, 1);
+		transition: background-color var(--motion-standard) ease, border-color var(--motion-standard) ease, box-shadow var(--motion-standard) ease, transform var(--motion-standard) var(--ease-elegant);
 	}
 	.combobox-selector:hover {
 		background: var(--ff);
@@ -206,7 +206,7 @@ onMounted(() => {
 			width: 16px;
 			height: 16px;
 			background: url(/src/assets/mainArea/paraBox/menu_button.svg) center/contain no-repeat;
-			transition: transform 0.18s cubic-bezier(0.2, 0.9, 0.2, 1), opacity 0.18s ease;
+			transition: transform var(--motion-panel) var(--ease-elegant), opacity var(--motion-standard) ease;
 		}
 	.combobox-selector.comboOpened .combobox-selector-img {
 		transform: rotate(180deg);

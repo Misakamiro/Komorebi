@@ -33,12 +33,12 @@
 		border-radius: 0 2px 2px 0;
 		box-shadow: 0 0 1px 1px hwb(0 0% 100% / 0.05), // 外部阴影
 					0 3px 6px hwb(0 0% 100% / 0.02) inset; // 内部凹陷阴影
-		transition: box-shadow 0.1s linear;
+		transition: background var(--motion-standard) ease, box-shadow var(--motion-standard) ease;
 		&:hover {
 			background: hwb(var(--bg99) / 0.9);
 			box-shadow: 0 0 1px 1px hwb(210deg 0% 0% / 0.5), // 外部阴影
 						0 3px 6px hwb(0 0% 100% / 0.02) inset; // 内部凹陷阴影
-			transition: box-shadow 0.3s cubic-bezier(0.1, 2, 0.3, 1);
+			transition: background var(--motion-standard) ease, box-shadow var(--motion-standard) var(--ease-elegant);
 		}
 	}
 }

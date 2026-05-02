@@ -14,12 +14,45 @@ import i11n from '@common/i11n/i11n';
 // #region server events
 
 const OVERALL_PROGRESS_INTERVAL_MS = 250;
-const TASK_DASHBOARD_INTERVAL_MS = 200;
+const TASK_DASHBOARD_FRAME_INTERVAL_MS = 50;
 
 function clearTaskDashboardTimer(task?: UITask) {
 	if (task?.dashboardTimer) {
+		cancelAnimationFrame(task.dashboardTimer);
 		clearInterval(task.dashboardTimer);
 		task.dashboardTimer = NaN;
+	}
+}
+
+function startTaskDashboardTimer(task: UITask) {
+	if (task.dashboardTimer) {
+		return;
+	}
+	let lastFrameAt = 0;
+	const tick = (now: number) => {
+		if (task.status !== TaskStatus.running) {
+			task.dashboardTimer = NaN;
+			return;
+		}
+		if (!lastFrameAt || now - lastFrameAt >= TASK_DASHBOARD_FRAME_INTERVAL_MS) {
+			const deltaMs = lastFrameAt ? now - lastFrameAt : TASK_DASHBOARD_FRAME_INTERVAL_MS;
+			dashboardTimer(task, deltaMs);
+			lastFrameAt = now;
+		}
+		task.dashboardTimer = requestAnimationFrame(tick) as any;
+	};
+	dashboardTimer(task, TASK_DASHBOARD_FRAME_INTERVAL_MS);
+	task.dashboardTimer = requestAnimationFrame(tick) as any;
+}
+
+function trimTaskProgressLog(task: UITask) {
+	const maxPoints = 900;
+	const compactAt = 1200;
+	for (const key of ['time', 'frame', 'size'] as const) {
+		const log = task.progressLog[key];
+		if (log.length > compactAt) {
+			log.splice(1, Math.max(0, log.length - maxPoints));
+		}
 	}
 }
 
@@ -121,7 +154,7 @@ export function handleTaskUpdate(server: Server, id: number, content: Task) {
 	// Object.assign(serverData.tasks[id], task);
 	// timer 相关处理（开始运行时添加定时器，结束或暂停运行时取消定时器）
 	if (task.status === TaskStatus.running && !task.dashboardTimer) {
-		task.dashboardTimer = setInterval(dashboardTimer, TASK_DASHBOARD_INTERVAL_MS, task) as any;
+		startTaskDashboardTimer(task);
 		if (task.progressLog.time.length <= 1) {
 			task.dashboard_smooth = {
 				progress: 0,
@@ -133,8 +166,7 @@ export function handleTaskUpdate(server: Server, id: number, content: Task) {
 			}
 		}
 	} else if (task.status !== TaskStatus.running && task.dashboardTimer) {
-		clearInterval(task.dashboardTimer);
-		task.dashboardTimer = NaN;
+		clearTaskDashboardTimer(task);
 	}
 	// 进度条相关处理
 	if (task.status === TaskStatus.finished || task.status === TaskStatus.error) {
@@ -169,6 +201,7 @@ export function handleProgressUpdate(server: Server, id: number, time: number, s
 			const value = status[_parameter];
 			task.progressLog[_parameter].push([time, Number.isFinite(value) && value >= 0 ? value : previous]);
 		}
+		trimTaskProgressLog(task);
 	} else {
 		task.progressLog = {
 			time: [],

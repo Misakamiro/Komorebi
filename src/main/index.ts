@@ -127,6 +127,7 @@ class ElectronApp {
 			...(process.platform === 'linux' ? { icon: path.join(__dirname, '../../build/icon.png') } : {}),
 			webPreferences: {
 				preload: path.join(__dirname, '../preload/index.cjs'),
+				backgroundThrottling: false,
 				// nodeIntegration: true,
 				// contextIsolation: false,
 			},
@@ -564,8 +565,15 @@ class ElectronApp {
 
 		// 设置任务栏 / dock 进度状态
 		ipcMain.on('setProgressBar', (event, progress: number, options: Electron.ProgressBarOptions | undefined) => {
-			this.mainWindow!.setProgressBar(progress * 0.99 + 0.01, options);
-			this.mainWindow!.setTitle(`${APP_NAME}${options && ['normal', 'paused'].includes(options.mode) ? ` - ${(progress * 100).toFixed(0)}%` : ''}`);
+			const mode = options?.mode || 'normal';
+			const safeProgress = Number.isFinite(progress) ? Math.max(0, Math.min(1, progress)) : 0;
+			if (mode === 'none') {
+				this.mainWindow!.setProgressBar(-1, { mode: 'none' });
+				this.mainWindow!.setTitle(APP_NAME);
+				return;
+			}
+			this.mainWindow!.setProgressBar(safeProgress * 0.99 + 0.01, options);
+			this.mainWindow!.setTitle(`${APP_NAME}${['normal', 'paused'].includes(mode) ? ` - ${(safeProgress * 100).toFixed(0)}%` : ''}`);
 		});
 
 		// 打开开发者工具

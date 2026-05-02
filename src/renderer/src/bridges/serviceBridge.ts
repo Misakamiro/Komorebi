@@ -1,7 +1,7 @@
 import EventEmitter from 'events';
 import CryptoJS from 'crypto-js';
 import { TypedEventEmitter } from '@common/utils';
-import { FFBoxServiceEvent, FFBoxServiceEventApi, FFBoxServiceInterface, NcmTaskParams, Notification, OutputParams, Task } from '@common/types';
+import { FFBoxServiceEvent, FFBoxServiceEventApi, FFBoxServiceInterface, InputInfo, NcmTaskParams, Notification, OutputParams, Task } from '@common/types';
 
 export interface ServeiceBridgeEvent {
 	connected: () => void;
@@ -322,6 +322,10 @@ export class ServiceBridge extends (EventEmitter as new () => TypedEventEmitter<
 
 	public getMediaFrameInfo(id: number, fileIndex: number, videoStreamIndex: number): Promise<void> {
 		return this.httpRequest<void>('POST', `/api/v1/tasks/${id}/frame-info`, { fileIndex, videoStreamIndex });
+	}
+
+	public refreshTaskMetadata(id: number): Promise<InputInfo[]> {
+		return this.httpRequest<InputInfo[]>('POST', `/api/v1/tasks/${id}/metadata`);
 	}
 
 	// #endregion

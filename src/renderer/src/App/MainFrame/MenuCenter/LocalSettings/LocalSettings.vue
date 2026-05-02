@@ -21,6 +21,11 @@ const colorThemeList = computed<RadioListProps['list']>(() => [
 	{ value: 'dark', caption: tr.value.dark },
 	{ value: 'system', caption: tr.value.system },
 ]);
+const animationSpeedList = computed<RadioListProps['list']>(() => [
+	{ value: 'default', caption: tr.value.animationDefault },
+	{ value: 'fast', caption: tr.value.animationFast },
+	{ value: 'slow', caption: tr.value.animationSlow },
+]);
 const useVirtualTaskListList = computed<RadioListProps['list']>(() => [
 	{ value: true, caption: tr.value.enableVirtualTaskList },
 	{ value: false, caption: tr.value.fullRenderTaskList },
@@ -41,6 +46,8 @@ const handleSettingChange = (key: keyof typeof appStore.frontendSettings, value:
 			<RadioList :list="dataRadixList" :value="appStore.frontendSettings.useIEC" @change="(value) => handleSettingChange('useIEC', value)" />
 			<span>{{ tr.colorTheme }}</span>
 			<RadioList :list="colorThemeList" :value="appStore.frontendSettings.colorThemeMode" @change="(value) => handleSettingChange('colorThemeMode', value)" />
+			<span>{{ tr.animationSpeed }}</span>
+			<RadioList :list="animationSpeedList" :value="appStore.frontendSettings.animationSpeed" @change="(value) => handleSettingChange('animationSpeed', value)" />
 			<span v-bind="useTooltip(tr.useVirtualTaskListDesc, 't')">{{ tr.taskListPerformance }}</span>
 			<RadioList v-bind="useTooltip(tr.useVirtualTaskListDesc, 't')" :list="useVirtualTaskListList" :value="appStore.frontendSettings.useVirtualTaskList" @change="(value) => handleSettingChange('useVirtualTaskList', value)" />
 		</div>

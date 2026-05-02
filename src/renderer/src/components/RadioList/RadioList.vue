@@ -129,12 +129,12 @@ const handleConfirm = (item: Props['list'][number], value: string, index: number
 						0 1.5px 3px 0 hwb(var(--hoverShadow) / 0.2);
 			border-left: transparent 3px solid;
 			transform: translate3d(var(--item-x), 0, 0) scale(var(--item-scale));
-			transition: background-color 0.16s ease, color 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease, transform 0.16s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.16s ease;
+			transition: background-color var(--motion-standard) ease, color var(--motion-standard) ease, box-shadow var(--motion-standard) ease, border-color var(--motion-standard) ease, transform var(--motion-standard) var(--ease-elegant), opacity var(--motion-standard) ease;
 			will-change: transform;
 			overflow: hidden;
 			&:active {
 				--item-scale: 0.985;
-				transition-duration: 0.06s;
+				transition-duration: var(--motion-press);
 			}
 			&:not(.itemSelected):hover::after {
 				content: '';
@@ -197,8 +197,8 @@ const handleConfirm = (item: Props['list'][number], value: string, index: number
 			border-left: #49e 3px solid;
 		}
 		.itemPulse {
-			animation-duration: 0.24s;
-			animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+			animation-duration: var(--motion-panel);
+			animation-timing-function: var(--ease-elegant);
 		}
 		.itemPulseA {
 			animation-name: radioPulseA;

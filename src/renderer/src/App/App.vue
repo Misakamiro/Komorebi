@@ -132,7 +132,7 @@ onMounted(async () => {
 		if (!storedFrontendSettings.colorThemeMode && storedFrontendSettings.colorTheme) {
 			storedFrontendSettings.colorThemeMode = storedFrontendSettings.colorTheme === 'themeDark' ? 'dark' : 'light';
 		}
-		const validFrontendSettings = ['colorTheme', 'colorThemeMode', 'language', 'useIEC', 'useVirtualTaskList'];
+		const validFrontendSettings = ['colorTheme', 'colorThemeMode', 'language', 'animationSpeed', 'useIEC', 'useVirtualTaskList'];
 		for (const key of Object.keys(storedFrontendSettings)) {
 			if (!validFrontendSettings.includes(key)) {
 				delete storedFrontendSettings[key];
@@ -170,6 +170,18 @@ onUnmounted(() => {
 		overflow: hidden;
 	}
 	body {
+		--motion-quick: 0.32s;
+		--motion-standard: 0.56s;
+		--motion-panel: 0.78s;
+		--motion-soft: 0.96s;
+		--motion-press: 0.18s;
+		--motion-dashboard: 0.5s;
+		--motion-stagger: 0.08s;
+		--motion-float: 2.8s;
+		--motion-spin: 1s;
+		--ease-elegant: cubic-bezier(0.22, 1, 0.36, 1);
+		--ease-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
+		--ease-exit: cubic-bezier(0.4, 0, 0.2, 1);
 		width: 100vw;
 		height: 100vh;
 		margin: 0;
@@ -182,7 +194,7 @@ onUnmounted(() => {
 		overflow: hidden;
 		user-select: none;
 		background: hwb(var(--bg92));
-		transition: background 0.18s ease, color 0.18s ease;
+		transition: background var(--motion-standard) ease, color var(--motion-standard) ease;
 	}
 	#app {
 		height: 100vh;

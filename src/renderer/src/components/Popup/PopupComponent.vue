@@ -149,28 +149,28 @@ watch(() => props.verticalOffset, (newValue) => {
 		border: none;
 		margin: auto;
 		padding: 0;
-		transition: transform 0.7s cubic-bezier(0.35, 1.4, 0.2, 0.95);
+		transition: transform var(--motion-panel) var(--ease-elegant);
 		z-index: 10;
 		.popupanimate-enter-from {
 			opacity: 0;
 			transform: scale(0.0) translateY(120px);
 		}
 		.popupanimate-enter-active {
-			transition: transform 0.5s cubic-bezier(0.4, 1.3, 0.4, 1), opacity 0.2s linear;
+			transition: transform var(--motion-soft) var(--ease-elegant), opacity var(--motion-standard) ease;
 		}
 		.popupanimate-enter-to, .popupanimate-leave-from, .popupanimateUser-leave-from {
 			opacity: 1;
 			transform: scale(1);
 		}
 		.popupanimate-leave-active {
-			transition: opacity 0.7s ease-out, transform 0.6s cubic-bezier(1, 0, 1, 1) 0.1s;
+			transition: opacity var(--motion-panel) ease-out, transform var(--motion-standard) var(--ease-exit) var(--motion-stagger);
 		}
 		.popupanimate-leave-to {
 			opacity: 0;
 			transform: scale(0.5);
 		}
 		.popupanimateUser-leave-active {
-			transition: all 0.5s linear;
+			transition: transform var(--motion-soft) var(--ease-exit), opacity var(--motion-standard) ease;
 		}
 		.popupanimateUser-leave-to {
 			opacity: 0;
@@ -216,7 +216,7 @@ watch(() => props.verticalOffset, (newValue) => {
 					width: 16px;
 					height: 16px;
 					transform: rotate(-90deg) scale(1);
-					transition: transform 0.3s cubic-bezier(0.1, 0.8, 0.3, 1), opacity 0.3s cubic-bezier(0.1, 0.8, 0.3, 1);
+					transition: transform var(--motion-standard) var(--ease-elegant), opacity var(--motion-standard) ease;
 					&:hover {
 						visibility: hidden;
 					}
@@ -229,7 +229,7 @@ watch(() => props.verticalOffset, (newValue) => {
 					border-radius: 4px;
 					opacity: 0;
 					transform: translateX(-32px);
-					transition: transform 0.3s cubic-bezier(0.1, 0.8, 0.3, 1), opacity 0.3s cubic-bezier(0.1, 0.8, 0.3, 1);
+					transition: transform var(--motion-standard) var(--ease-elegant), opacity var(--motion-standard) ease;
 					&:hover {
 						box-shadow: 0 1px 4px hwb(var(--hoverShadow) / 0.2),
 									0 4px 2px -2px hwb(var(--highlight) / 0.5) inset;

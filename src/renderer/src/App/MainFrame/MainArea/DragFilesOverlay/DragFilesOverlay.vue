@@ -195,7 +195,7 @@ const handleDrop = (event: DragEvent) => {
 		}
 	}
 	.dragFilesOverlayAnim-leave-active {
-		transition: opacity 0.3s linear, filter 0.3s ease-in;
+		transition: opacity var(--motion-standard) ease, filter var(--motion-panel) var(--ease-exit);
 	}
 	.container {
 		position: absolute;
@@ -254,7 +254,7 @@ const handleDrop = (event: DragEvent) => {
 					object-fit: contain;
 					margin-bottom: 10px;
 					filter: drop-shadow(0 12px 24px hwb(var(--hoverShadow) / 0.16));
-					animation: guideImageFloat 2.6s ease-in-out infinite;
+					animation: guideImageFloat var(--motion-float) ease-in-out infinite;
 				}
 				p {
 					margin: 0;
@@ -286,11 +286,11 @@ const handleDrop = (event: DragEvent) => {
 				0 1px 0.5px 0px hwb(var(--highlight) / 0.5) inset;	// 上高光
 			backdrop-filter: blur(2px) contrast(110%);
 			font-size: min(1.5cqw, 3.5cqh);
-			transition: background-color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+			transition: background-color var(--motion-standard) ease, border-color var(--motion-standard) ease, box-shadow var(--motion-standard) ease, transform var(--motion-standard) var(--ease-elegant);
 			will-change: transform, background-color;
 			&>div {
 				transform-origin: left center;
-				transition: opacity 0.18s ease, transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+				transition: opacity var(--motion-standard) ease, transform var(--motion-panel) var(--ease-elegant);
 				will-change: transform, opacity;
 			}
 			.small {

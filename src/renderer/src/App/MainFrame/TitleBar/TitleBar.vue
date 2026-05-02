@@ -31,9 +31,13 @@ const serverStyle = computed(() => {
 });
 
 watch(
-	[() => appStore.currentServer?.data?.progress, () => appStore.currentServer?.data?.workingStatus],
+	[() => appStore.currentServerId, () => appStore.currentServer?.data?.progress, () => appStore.currentServer?.data?.workingStatus],
 	() => {
-		const serverData = appStore.currentServer.data;
+		const serverData = appStore.currentServer?.data;
+		if (!serverData) {
+			nodeBridge.setProgressBar(0, { mode: 'none' });
+			return;
+		}
 		const hasUndoneWork = serverData.workingStatus === WorkingStatus.running || serverData.tasks.some((task) => [TaskStatus.idle_queued, TaskStatus.paused, TaskStatus.paused_queued, TaskStatus.running, TaskStatus.stopping, TaskStatus.finishing].includes(task.status));
 		const mode = (() => {
 			if (hasUndoneWork) {
@@ -50,7 +54,8 @@ watch(
 			serverData.progress,
 			{ mode },
 		);
-	}
+	},
+	{ immediate: true, flush: 'sync' },
 );
 
 // 点击标签页
@@ -157,7 +162,7 @@ const handleTabCloseClicked = (server: Server, event: MouseEvent) => {
 					height: 28px;
 					border-radius: 6px 6px 0 0;
 					overflow: hidden;
-					transition: transform 0.4s cubic-bezier(0.1, 1.5, 0.3, 1);
+					transition: transform var(--motion-panel) var(--ease-elegant), background-color var(--motion-standard) ease, box-shadow var(--motion-standard) ease, opacity var(--motion-standard) ease;
 					span {
 						position: absolute;
 						left: 0;
@@ -173,7 +178,7 @@ const handleTabCloseClicked = (server: Server, event: MouseEvent) => {
 						left: 0;
 						top: 0;
 						height: 100%;
-						transition: width 0.3s ease-out, opacity 0.2s ease-out;
+						transition: width var(--motion-standard) ease-out, opacity var(--motion-standard) ease-out;
 					}
 
 					.close {
@@ -239,7 +244,7 @@ const handleTabCloseClicked = (server: Server, event: MouseEvent) => {
 			}
 			.tabanimate-leave-active {
 				overflow: hidden;
-				transition: transform linear 0.2s; // 这个 transition 会被上面的定义覆盖，但需要定义时长让 Vue 控制消失
+				transition: transform var(--motion-quick) var(--ease-exit); // 这个 transition 会被上面的定义覆盖，但需要定义时长让 Vue 控制消失
 			}
 		}
 	}

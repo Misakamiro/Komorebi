@@ -101,7 +101,7 @@ const getButtonColorStyle = (index: number) => ({ color: appStore.showTaskInfo?.
 			transform: translateX(-30px);
 		}
 		.animationLeft-enter-active {
-			transition: opacity 0.3s, transform 0.5s cubic-bezier(0.2, 1.25, 0.3, 1);
+			transition: opacity var(--motion-standard) ease, transform var(--motion-soft) var(--ease-elegant);
 		}
 		.animationLeft-enter-to, .animationLeft-leave-from {
 			/* z-index: 1; */
@@ -109,7 +109,7 @@ const getButtonColorStyle = (index: number) => ({ color: appStore.showTaskInfo?.
 			transform: translateX(0);
 		}
 		.animationLeft-leave-active {
-			transition: opacity 0.3s, transform 0.3s cubic-bezier(0.5, 0, 1, 1);
+			transition: opacity var(--motion-standard) ease, transform var(--motion-standard) var(--ease-exit);
 		}
 		.animationLeft-leave-to {
 			opacity: 0;
@@ -122,7 +122,7 @@ const getButtonColorStyle = (index: number) => ({ color: appStore.showTaskInfo?.
 			transform: translateX(30px);
 		}
 		.animationRight-enter-active {
-			transition: opacity 0.3s, transform 0.5s cubic-bezier(0.2, 1.25, 0.3, 1);
+			transition: opacity var(--motion-standard) ease, transform var(--motion-soft) var(--ease-elegant);
 		}
 		.animationRight-enter-to, .animationRight-leave-from {
 			/* z-index: 1; */
@@ -130,7 +130,7 @@ const getButtonColorStyle = (index: number) => ({ color: appStore.showTaskInfo?.
 			transform: translateX(0);
 		}
 		.animationRight-leave-active {
-			transition: opacity 0.3s, transform 0.3s cubic-bezier(0.5, 0, 1, 1);
+			transition: opacity var(--motion-standard) ease, transform var(--motion-standard) var(--ease-exit);
 		}
 		.animationRight-leave-to {
 			opacity: 0;
@@ -144,7 +144,7 @@ const getButtonColorStyle = (index: number) => ({ color: appStore.showTaskInfo?.
 			box-shadow: 0px 4px 4px 0px rgba(0, 0, 0, 0.02), // 远距离下阴影
 						0px -2px 1px -1px rgba(0, 0, 0, 0.1) inset; // 内部下阴影
 			overflow: hidden;
-			transition: height 0.4s cubic-bezier(0.2, 1.4, 0.65, 1);
+			transition: height var(--motion-panel) var(--ease-elegant);
 			.devider {
 				cursor: ns-resize;
 				.buttons {
@@ -161,7 +161,7 @@ const getButtonColorStyle = (index: number) => ({ color: appStore.showTaskInfo?.
 						padding: 0 8px;
 						background-color: transparent;
 						border: none;
-						transition: width 0.3s ease;
+						transition: width var(--motion-panel) var(--ease-elegant), background-color var(--motion-standard) ease, box-shadow var(--motion-standard) ease;
 						&:hover {
 							background-color: hwb(var(--hoverLightBg) / 0.5);
 							box-shadow: 0 0 4px 2px hwb(var(--hoverShadow) / 0.05);
@@ -186,7 +186,7 @@ const getButtonColorStyle = (index: number) => ({ color: appStore.showTaskInfo?.
 							letter-spacing: 2px;
 							white-space: nowrap;
 							overflow: hidden;
-							transition: width 0.3s ease, padding 0.3s ease;
+							transition: width var(--motion-panel) var(--ease-elegant), padding var(--motion-panel) var(--ease-elegant);
 							filter: var(--paraBoxButtonDropFilterText);
 						}
 					}
@@ -203,7 +203,7 @@ const getButtonColorStyle = (index: number) => ({ color: appStore.showTaskInfo?.
 					padding: 0;
 					background-color: transparent;
 					border: none;
-					transition: width 0.3s ease;
+					transition: width var(--motion-panel) var(--ease-elegant), background-color var(--motion-standard) ease, box-shadow var(--motion-standard) ease;
 					&:hover {
 						background-color: hwb(var(--hoverLightBg) / 0.5);
 						box-shadow: 0 0 4px 2px hwb(var(--hoverShadow) / 0.05);
@@ -224,14 +224,14 @@ const getButtonColorStyle = (index: number) => ({ color: appStore.showTaskInfo?.
 						white-space: nowrap;
 						overflow: hidden;
 						color: #777;
-						transition: width 0.3s ease, padding 0.3s ease;
+						transition: width var(--motion-panel) var(--ease-elegant), padding var(--motion-panel) var(--ease-elegant);
 						filter: var(--paraBoxButtonDropFilterText);
 					}
 					svg {
 						width: 20px;
 						height: 20px;
 						color: #777;
-						transition: transform 0.4s cubic-bezier(0.2, 1.4, 0.65, 1);
+						transition: transform var(--motion-panel) var(--ease-elegant);
 					}
 					@media only screen and (min-width: 640px) {
 						width: 120px;

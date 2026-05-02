@@ -128,7 +128,7 @@ const handleTransferCenterButtonClicked = () => {
 					top: 0;
 					text-align: left;
 					zoom: 1;
-					transition: all 0.3s ease-out;
+					transition: top var(--motion-standard) var(--ease-elegant), opacity var(--motion-standard) ease, transform var(--motion-standard) var(--ease-elegant);
 					@keyframes rotation {
 						from {
 							transform: rotate(0deg);
@@ -140,7 +140,7 @@ const handleTransferCenterButtonClicked = () => {
 					.loading {
 						width: 18px;
 						height: 18px;
-						animation: rotation 1s steps(8) infinite;
+						animation: rotation var(--motion-spin) steps(8) infinite;
 						margin: -2px -2px -2px 8px;
 					}
 				}

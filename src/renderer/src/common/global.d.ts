@@ -32,6 +32,7 @@ declare global {
 			colorTheme?: string;
 			colorThemeMode?: string;
 			language?: string;
+			animationSpeed?: string;
 		}
 	}
 }

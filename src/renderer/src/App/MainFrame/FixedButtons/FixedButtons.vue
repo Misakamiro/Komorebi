@@ -167,7 +167,7 @@ const handleCloseClicked = () => {
 		background-color: hwb(0.0 98% 2%);
 		border-radius: 8px;
 		box-shadow: 0 2px 6px hwb(0 0% 100% / 0.2);
-		transition: all 0.3s ease, box-shadow 0s, transform 0s;
+		transition: background-color var(--motion-standard) ease, opacity var(--motion-standard) ease, width var(--motion-panel) var(--ease-elegant), height var(--motion-panel) var(--ease-elegant);
 		z-index: 1;
 		-webkit-app-region: none;
 		img {
@@ -195,9 +195,9 @@ const handleCloseClicked = () => {
 		opacity: 1;
 	}
 	.titleTrans-enter-active {
-		transition: opacity 0.5s 0.1s;
+		transition: opacity var(--motion-soft) ease var(--motion-stagger);
 	}
 	.titleTrans-leave-active {
-		transition: opacity 0.1s;
+		transition: opacity var(--motion-quick) ease;
 	}
 </style>
