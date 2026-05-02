@@ -1,6 +1,6 @@
 {
   "name": "komorebi",
-  "version": "5.40.0",
+  "version": "5.40.1",
   "private": true,
   "description": "Komorebi Windows desktop media converter",
   "main": "app/main/index.cjs",

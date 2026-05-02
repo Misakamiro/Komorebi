@@ -81,7 +81,7 @@ npm run build:everything
 构建完成后，安装包在：
 
 ```text
-release/Komorebi_5.40.0.exe
+release/Komorebi_5.40.1.exe
 ```
 
 在 GitHub 创建 Release：
@@ -89,9 +89,9 @@ release/Komorebi_5.40.0.exe
 1. 进入仓库页面
 2. 点击右侧 `Releases`
 3. 点击 `Draft a new release`
-4. Tag 填 `v5.40`
-5. Release title 填 `Komorebi 5.40`
-6. 上传 `release/Komorebi_5.40.0.exe`
+4. Tag 填 `v5.40.1`
+5. Release title 填 `Komorebi 5.40.1`
+6. 上传 `release/Komorebi_5.40.1.exe`
 7. 如果要分发工具包，也上传 `tools/ffmpeg.exe`、`tools/ffprobe.exe`、`tools/ncmdump.exe` 和相关 LICENSE 文件
 8. 点击 `Publish release`
 

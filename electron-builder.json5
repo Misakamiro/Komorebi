@@ -24,6 +24,10 @@
         "from": "NOTICE-Komorebi.md",
         "to": "NOTICE-Komorebi.md",
       },
+      {
+        "from": "config/256.ico",
+        "to": "Komorebi.ico",
+      },
   ],
   "win": {
     "artifactName": "${productName}_${version}.${ext}",
@@ -72,5 +76,9 @@
     "installerLanguages": ["zh_CN", "en_US", "ja_JP"],
     "multiLanguageInstaller": true,
     "deleteAppDataOnUninstall": false,
+    "installerIcon": "config/256.ico",
+    "uninstallerIcon": "config/256.ico",
+    "installerHeaderIcon": "config/256.ico",
+    "include": "config/installer.nsh",
   },
 }
