@@ -105,6 +105,9 @@ const lang: I11n = {
 			multiInputMode: '複数入力 1 タスクモード',
 			fastStart: 'ドロップ後すぐ開始',
 			status: (enabled) => `状態：${enabled ? '有効' : 'オフ'}`,
+			autoSwitched: (workflow) => `ドロップしたファイルに合わせて「${workflow}」へ切り替えました。`,
+			noSupportedInputs: 'Komorebi が対応できるメディアファイルが見つかりません。形式またはパスを確認してください。',
+			noCommonWorkflow: 'ドロップしたファイルには別々の処理モードが必要です。動画、音声、NCM は分けてドロップしてください。',
 		},
 		komorebi: {
 			workflows: {
@@ -112,6 +115,14 @@ const lang: I11n = {
 				audioConvert: '音声変換',
 				remux: 'リマックス',
 				ncm: 'NCM 変換',
+			},
+			workflowGuard: {
+				blocked: (workflow, reason) => `「${workflow}」へ切り替えできません：${reason}`,
+				ncmOnly: '選択中のタスクは NCM タスクです。NCM 変換を使用してください。',
+				ffmpegOnly: '選択中のタスクは通常メディアのため、NCM 変換は使用できません。',
+				audioCannotVideo: '音声ファイルには動画ストリームがないため、動画圧縮は使用できません。音声変換またはリマックスを選択してください。',
+				ncmCannotFfmpeg: 'NCM 暗号化音楽は、通常の FFmpeg モードを使う前に NCM 変換で復号する必要があります。',
+				unsupportedExtension: (extension) => `拡張子 ${extension || '不明'} はこのモードに適していません。`,
 			},
 			hints: {
 				noInput: 'ファイルを選択またはドロップすると、Komorebi が利用可能な形式を自動検出します。',

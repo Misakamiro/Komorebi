@@ -139,6 +139,9 @@ const lang: I11n = {
 			multiInputMode: '多输入单任务模式',
 			fastStart: '拖入文件即开始',
 			status: (enabled) => `状态：${enabled ? '启用' : '不用'}`,
+			autoSwitched: (workflow) => `已根据拖入文件自动切换到「${workflow}」。`,
+			noSupportedInputs: '没有找到 Komorebi 支持的媒体文件。请检查文件格式或路径是否正确。',
+			noCommonWorkflow: '拖入的文件需要不同处理模式，不能放在同一批任务里。请按视频、音频或 NCM 分开拖入。',
 		},
 		komorebi: {
 			workflows: {
@@ -146,6 +149,14 @@ const lang: I11n = {
 				audioConvert: '音频转换',
 				remux: '转封装',
 				ncm: 'NCM转换',
+			},
+			workflowGuard: {
+				blocked: (workflow, reason) => `无法切换到「${workflow}」：${reason}`,
+				ncmOnly: '当前选中的是 NCM 任务，只能使用 NCM 转换。',
+				ffmpegOnly: '当前选中的是普通媒体任务，不能使用 NCM 转换。',
+				audioCannotVideo: '音频文件没有视频流，不能使用视频压缩。请选择音频转换或转封装。',
+				ncmCannotFfmpeg: 'NCM 加密音乐需要先用 NCM 转换解密，不能直接使用普通 FFmpeg 模式。',
+				unsupportedExtension: (extension) => `当前文件扩展名 ${extension || '未知'} 不适合这个模式。`,
 			},
 			hints: {
 				noInput: '选择或拖入文件后，Komorebi 会自动识别可用格式。',

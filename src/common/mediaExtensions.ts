@@ -1,6 +1,7 @@
 import type { KomorebiWorkflow } from './komorebiPresets';
 
 const normalizeExtension = (value: string) => value.trim().toLowerCase().replace(/^\*?\.?/, '.');
+const workflowPriority: KomorebiWorkflow[] = ['video-compress', 'audio-convert', 'remux', 'ncm'];
 
 export const komorebiVideoInputExtensions = [
 	'.3g2',
@@ -123,4 +124,61 @@ export const getFileExtension = (filePath: string) => {
 export const isKomorebiDroppablePath = (workflow: KomorebiWorkflow, filePath: string) => {
 	const ext = getFileExtension(filePath);
 	return !!ext && (komorebiWorkflowInputExtensions[workflow] || komorebiWorkflowInputExtensions.remux).includes(ext);
+};
+
+export type KomorebiInputKind = 'video' | 'audio' | 'ncm' | 'unknown';
+
+export const getKomorebiInputKind = (filePath: string): KomorebiInputKind => {
+	const ext = getFileExtension(filePath);
+	if (!ext) {
+		return 'unknown';
+	}
+	if (komorebiNcmInputExtensions.includes(ext)) {
+		return 'ncm';
+	}
+	if (komorebiVideoInputExtensions.includes(ext)) {
+		return 'video';
+	}
+	if (komorebiAudioInputExtensions.includes(ext)) {
+		return 'audio';
+	}
+	return 'unknown';
+};
+
+export const getKomorebiWorkflowsForPath = (filePath: string): KomorebiWorkflow[] => (
+	workflowPriority.filter((workflow) => isKomorebiDroppablePath(workflow, filePath))
+);
+
+export const isKomorebiKnownInputPath = (filePath: string) => getKomorebiWorkflowsForPath(filePath).length > 0;
+
+export const areKomorebiPathsCompatibleWithWorkflow = (workflow: KomorebiWorkflow, filePaths: string[]) => (
+	filePaths.length > 0 && filePaths.every((filePath) => isKomorebiDroppablePath(workflow, filePath))
+);
+
+export const getKomorebiWorkflowForPaths = (filePaths: string[], currentWorkflow?: KomorebiWorkflow): KomorebiWorkflow | undefined => {
+	const validPaths = filePaths.filter(isKomorebiKnownInputPath);
+	if (!validPaths.length) {
+		return undefined;
+	}
+	if (currentWorkflow && areKomorebiPathsCompatibleWithWorkflow(currentWorkflow, validPaths)) {
+		return currentWorkflow;
+	}
+	const compatible = workflowPriority.filter((workflow) => areKomorebiPathsCompatibleWithWorkflow(workflow, validPaths));
+	if (!compatible.length) {
+		return undefined;
+	}
+	const kinds = validPaths.map(getKomorebiInputKind);
+	if (kinds.every((kind) => kind === 'ncm')) {
+		return compatible.includes('ncm') ? 'ncm' : compatible[0];
+	}
+	if (kinds.every((kind) => kind === 'audio')) {
+		return compatible.includes('audio-convert') ? 'audio-convert' : compatible[0];
+	}
+	if (kinds.every((kind) => kind === 'video')) {
+		return compatible.includes('video-compress') ? 'video-compress' : compatible[0];
+	}
+	if (compatible.includes('remux')) {
+		return 'remux';
+	}
+	return compatible.includes('audio-convert') ? 'audio-convert' : compatible[0];
 };

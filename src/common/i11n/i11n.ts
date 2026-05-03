@@ -130,6 +130,9 @@ export interface I11n {
 			multiInputMode: string;
 			fastStart: string;
 			status: (enabled: boolean) => string;
+			autoSwitched: (workflow: string) => string;
+			noSupportedInputs: string;
+			noCommonWorkflow: string;
 		},
 		komorebi: {
 			workflows: {
@@ -137,6 +140,14 @@ export interface I11n {
 				audioConvert: string;
 				remux: string;
 				ncm: string;
+			};
+			workflowGuard: {
+				blocked: (workflow: string, reason: string) => string;
+				ncmOnly: string;
+				ffmpegOnly: string;
+				audioCannotVideo: string;
+				ncmCannotFfmpeg: string;
+				unsupportedExtension: (extension: string) => string;
 			};
 			hints: {
 				noInput: string;

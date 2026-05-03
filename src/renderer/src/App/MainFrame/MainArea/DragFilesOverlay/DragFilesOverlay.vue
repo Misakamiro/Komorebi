@@ -5,7 +5,9 @@ import { ServiceBridgeStatus } from '@renderer/bridges/serviceBridge';
 import { showAddTaskPrompt } from '@renderer/components/misc/AddTasks';
 import nodeBridge from '@renderer/bridges/nodeBridge';
 import i11n from '@common/i11n/i11n';
-import { isKomorebiDroppablePath } from '@common/mediaExtensions';
+import type { KomorebiWorkflow } from '@common/komorebiPresets';
+import { getKomorebiWorkflowForPaths, isKomorebiKnownInputPath } from '@common/mediaExtensions';
+import Popup from '@renderer/components/Popup/Popup';
 import dropFilesOkImage from '@renderer/assets/komorebi-guides/drop-files-ok.png';
 
 const appStore = useAppStore();
@@ -20,8 +22,14 @@ const tr = computed(() => {
 	appStore.frontendSettings.language;
 	return i11n.frontend.dragDrop;
 });
+const workflowLabels = computed<Record<KomorebiWorkflow, string>>(() => ({
+	'video-compress': i11n.frontend.komorebi.workflows.videoCompress,
+	'audio-convert': i11n.frontend.komorebi.workflows.audioConvert,
+	remux: i11n.frontend.komorebi.workflows.remux,
+	ncm: i11n.frontend.komorebi.workflows.ncm,
+}));
 
-const hasWorkflowExtension = (filePath: string) => isKomorebiDroppablePath(appStore.komorebi.workflow, filePath);
+const hasKnownExtension = (filePath: string) => isKomorebiKnownInputPath(filePath);
 
 const expandDroppedPaths = async (paths: string[]) => {
 	const expanded: string[] = [];
@@ -29,14 +37,67 @@ const expandDroppedPaths = async (paths: string[]) => {
 	for (let i = 0; i < paths.length; i++) {
 		if (categorized.lineResults[i] === 'ld') {
 			const subFiles = await nodeBridge.listItemsInDirectory(paths[i], { mode: 'getFiles', recursive: true, fullPath: true });
-			expanded.push(...subFiles.filter(hasWorkflowExtension));
+			expanded.push(...subFiles.filter(hasKnownExtension));
 		} else if (['lf', 'r'].includes(categorized.lineResults[i])) {
-			if (hasWorkflowExtension(paths[i])) {
+			if (hasKnownExtension(paths[i])) {
 				expanded.push(paths[i]);
 			}
 		}
 	}
 	return [...new Set(expanded)];
+};
+
+const switchWorkflowForPaths = (paths: string[]) => {
+	const nextWorkflow = getKomorebiWorkflowForPaths(paths, appStore.komorebi.workflow);
+	if (!nextWorkflow) {
+		Popup({ message: paths.length ? tr.value.noCommonWorkflow : tr.value.noSupportedInputs, level: 2 });
+		return undefined;
+	}
+	if (nextWorkflow !== appStore.komorebi.workflow) {
+		appStore.komorebi.workflow = nextWorkflow;
+		Popup({ message: tr.value.autoSwitched(workflowLabels.value[nextWorkflow]), level: 1 });
+	}
+	return nextWorkflow;
+};
+
+const startAddedTasksIfNeeded = (addTasksPromise: Promise<number[]>) => {
+	if (!fastStartMode.value) {
+		return;
+	}
+	addTasksPromise.then(() => {
+		const server = appStore.currentServer;
+		if (server.data.uploadFiles.length) {
+			// 轮询检查是否所有文件都上传好了（暂时没给上传完成设监听机制，所以轮询）
+			const checkStatusHandler = () => {
+				const isOKList = server.data.uploadFiles.map((uploadFile) => !uploadFile.readTask && !uploadFile.hashTask && !uploadFile.uploadTask);
+				if (isOKList.every((value) => value)) {
+					server.entity.queueStart();
+					clearInterval(checkStatusTimer);
+				}
+			};
+			const checkStatusTimer = setInterval(checkStatusHandler, 250);
+		} else {
+			// 不需要上传，直接开始
+			server.entity.queueStart();
+		}
+	});
+};
+
+const addDroppedPaths = async (rawPaths: string[]) => {
+	const paths = await expandDroppedPaths(rawPaths);
+	const workflow = switchWorkflowForPaths(paths);
+	if (!workflow) {
+		return;
+	}
+	if (workflow === 'ncm') {
+		const taskId = await appStore.addNcmTasksFromInputs(paths);
+		if (fastStartMode.value && typeof taskId === 'number' && taskId >= 0) {
+			appStore.currentServer?.entity.taskStart(taskId);
+		}
+		return;
+	}
+	const addTasksPromise = appStore.addTasks(paths, multiInputMode.value ? 'multiInput' : 'multiTask') as Promise<number[]>;
+	startAddedTasksIfNeeded(addTasksPromise);
 };
 
 const handleDragOver = (event: DragEvent) => {
@@ -86,62 +147,13 @@ const handleDrop = (event: DragEvent) => {
 	draggingStatus.value = undefined;
 	appStore.showDragFilesOverlay = false;
 	if (event.dataTransfer?.files?.length) {
-		if (isNcmMode.value) {
-			const paths = [...event.dataTransfer.files].map((file) => file.path).filter(Boolean);
-			expandDroppedPaths(paths).then((expandedPaths) => appStore.addNcmTasksFromInputs(expandedPaths)).then((taskId) => {
-				if (fastStartMode.value && typeof taskId === 'number' && taskId >= 0) {
-					appStore.currentServer?.entity.taskStart(taskId);
-				}
-			});
-			return;
-		}
 		const rawPaths = [...event.dataTransfer.files].map((file) => file.path).filter(Boolean);
-		const addTasksPromise = expandDroppedPaths(rawPaths).then((paths) =>
-			appStore.addTasks(paths.length ? paths : event.dataTransfer?.files, multiInputMode.value ? 'multiInput' : 'multiTask')
-		);
-		if (fastStartMode.value) {
-			addTasksPromise.then((taskIds: number[]) => {
-				const server = appStore.currentServer;
-				if (server.data.uploadFiles.length) {
-					// 轮询检查是否所有文件都上传好了（暂时没给上传完成设监听机制，所以轮询）
-					const checkStatusHandler = () => {
-						const isOKList = server.data.uploadFiles.map((uploadFile) => !uploadFile.readTask && !uploadFile.hashTask && !uploadFile.uploadTask);
-						if (isOKList.every((value) => value)) {
-							server.entity.queueStart();
-							clearInterval(checkStatusTimer);
-						}
-					};
-					const checkStatusTimer = setInterval(checkStatusHandler, 250);
-				} else {
-					// 不需要上传，直接开始
-					server.entity.queueStart();
-				}
-				// const fullFilledTask = new Array(taskIds.length).fill(false);
-				// server.entity.on('taskUpdate', taskUpdateHandler);					
-				// // 捕获任务更新事件，直到所有任务的状态都变为 idle（结束上传），此时就可以开始
-				// const taskUpdateHandler = (arg: { taskId: number, task: Task }) => {
-				// 	if (arg.task.status === TaskStatus.idle) {
-				// 		const taskIdIndex = taskIds.findIndex((id) => id === arg.taskId);
-				// 		if (taskIdIndex >= 0) {
-				// 			fullFilledTask[taskIdIndex] = true;
-				// 			if (fullFilledTask.every((task) => task)) {
-				// 				server.entity.queueStart();
-				// 				server.entity.off('taskUpdate', taskUpdateHandler);
-				// 			}
-				// 		}
-				// 	}
-				// 	console.log(fullFilledTask);
-				// };
-			});
-		}
+		addDroppedPaths(rawPaths);
 	} else if (event.dataTransfer?.items) {
 		const text = event.dataTransfer?.getData('text/plain');
-		if (isNcmMode.value) {
-			appStore.addNcmTasksFromInputs(text.replaceAll('\r\n', '\n').split('\n').filter(Boolean)).then((taskId) => {
-				if (fastStartMode.value && typeof taskId === 'number' && taskId >= 0) {
-					appStore.currentServer?.entity.taskStart(taskId);
-				}
-			});
+		const rawPaths = text.replaceAll('\r\n', '\n').split('\n').map((line) => line.trim()).filter(Boolean);
+		if (rawPaths.some(hasKnownExtension)) {
+			addDroppedPaths(rawPaths);
 		} else {
 			showAddTaskPrompt(text);
 		}

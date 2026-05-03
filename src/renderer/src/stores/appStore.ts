@@ -17,6 +17,7 @@ import { allMuxers, builtInMuxers } from '@common/params/formats';
 import path from '@common/path';
 import { parseFFmpegCodecsToCodecsList, parseFFmpegFiltersToFiltersList, parseFFmpegMuDeMuxersToList } from '@common/params/parser';
 import { clearServerRuntimeTimers, handleCmdUpdate, handleFFmpegInfo, handleProgressUpdate, handleTasklistUpdate, handleNotificationUpdate, handleTaskUpdate, handleWorkingStatusUpdate } from '@renderer/logic/eventsHandler';
+import { getKomorebiWorkflowForPaths, isKomorebiKnownInputPath } from '@common/mediaExtensions';
 import nodeBridge from '@renderer/bridges/nodeBridge';
 import { addUploadTask } from '../logic/transferManager2';
 import { getLimitaion } from '../logic/limitaions';
@@ -189,13 +190,42 @@ export const useAppStore = defineStore('app', {
 				const server = 这.currentServer;
 				const isRemoteService = server.entity.ip !== 'localhost';
 				const newlyAddedTaskIds: Promise<number>[] = [];	// 考虑到 timer 的最后一项不一定最晚完成，这里用 Promise 等待全部添加完成。
+				const inputItems = Array.from(inputList as ArrayLike<string | File>);
+				const inputPathOf = (input: string | File) => typeof input === 'string' ? input : ((input as any).path || input.name || '');
+				const supportedInputItems = inputItems.filter((input) => isKomorebiKnownInputPath(inputPathOf(input)));
+				const nextWorkflow = getKomorebiWorkflowForPaths(supportedInputItems.map(inputPathOf), 这.komorebi.workflow);
 				let dropDelayCount = 0;
+
+				if (!supportedInputItems.length || !nextWorkflow) {
+					Popup({ message: '没有找到 Komorebi 支持的媒体文件。请检查文件格式或路径是否正确。', level: NotificationLevel.warning });
+					resolve([]);
+					return;
+				}
+				if (supportedInputItems.length !== inputItems.length) {
+					Popup({ message: `已跳过 ${inputItems.length - supportedInputItems.length} 个不支持的文件。`, level: NotificationLevel.warning });
+				}
+				if (nextWorkflow !== 这.komorebi.workflow) {
+					这.komorebi.workflow = nextWorkflow;
+				}
+				if (nextWorkflow === 'ncm') {
+					const taskId = await 这.addNcmTasksFromInputs(supportedInputItems);
+					resolve(typeof taskId === 'number' ? [taskId] : []);
+					return;
+				}
 
 				if (type === 'multiTask') {
 					let needStopCuzLimit = false;	// 因为使用 setTimeout 逐个添加，需要用标记位停止后续添加。
-					for (const input of inputList) {
+					let finishedAddAttempts = 0;
+					const finishAddAttempt = () => {
+						finishedAddAttempts++;
+						if (finishedAddAttempts === supportedInputItems.length) {
+							allTimerFinish();
+						}
+					};
+					for (const input of supportedInputItems) {
 						setTimeout(async () => {	// 保留轻微错峰，避免大量任务同时进入列表时界面过于生硬。
 							if (needStopCuzLimit) {
+								finishAddAttempt();
 								return;
 							}
 							const fileBaseName = typeof input === 'string' ? getPathBaseName(input) : input.name;
@@ -210,6 +240,7 @@ export const useAppStore = defineStore('app', {
 										message: `${fileBaseName} 文件大小超过 ${limitedFileSizeGB} GB，暂不支持上传操作`,
 										level: 2,
 									});
+									finishAddAttempt();
 									return;
 								}
 							}
@@ -226,9 +257,7 @@ export const useAppStore = defineStore('app', {
 								});
 							}
 							newlyAddedTaskIds.push(promise);
-							if (newlyAddedTaskIds.length === inputList.length) {
-								allTimerFinish();
-							}
+							finishAddAttempt();
 						}, dropDelayCount);
 						// console.log(dropDelayCount)
 						dropDelayCount += 66.67;
@@ -239,7 +268,7 @@ export const useAppStore = defineStore('app', {
 					 * 远程：文件先生成 inputName 占位符再上传；文件夹暂不支持远程拖入。
 					 */
 					// 先添加占位符任务，然后检查上传。
-					const firstFileBaseName = typeof inputList[0] === 'string' ? trimExt(getPathBaseName(inputList[0])) : inputList[0]?.name;
+					const firstFileBaseName = typeof supportedInputItems[0] === 'string' ? trimExt(getPathBaseName(supportedInputItems[0])) : supportedInputItems[0]?.name;
 					const taskId = await 这.addTask(
 						firstFileBaseName ? trimExt(firstFileBaseName) : `新任务 ${new Date().toISOString()}`,
 						[]
@@ -247,7 +276,7 @@ export const useAppStore = defineStore('app', {
 					newlyAddedTaskIds.push(Promise.resolve(taskId));
 
 					const inputPaths: string[] = [];
-					for (const input of inputList) {
+					for (const input of supportedInputItems) {
 						const fileBaseName = typeof input === 'string' ? getPathBaseName(input) : input.name;
 						const fileType = typeof input === 'string' ? (await nodeBridge.getPathsCategorized(input)).lineResults?.[0] : 'lf';
 						const needUpload = fileType === 'lf' && isRemoteService;	// 缃戦〉鐗堝繀瀹氭槸 remoteService锛涘鏋滄嫋鍏ョ殑鏄枃浠惰€屼笉鏄瓧绗︿覆閭ｄ箞蹇呭畾鏄?lf锛堜互鍚庡啀鏀寔鏂囦欢澶规嫋鍏ワ級

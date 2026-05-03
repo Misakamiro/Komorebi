@@ -3,7 +3,9 @@ import { computed } from 'vue';
 import { useAppStore } from '@renderer/stores/appStore';
 import KomorebiNormalView from './KomorebiNormalView.vue';
 import { KomorebiWorkflow } from '@common/komorebiPresets';
+import { getFileExtension, getKomorebiInputKind, isKomorebiDroppablePath } from '@common/mediaExtensions';
 import i11n from '@common/i11n/i11n';
+import Popup from '@renderer/components/Popup/Popup';
 
 const appStore = useAppStore();
 const tr = computed(() => {
@@ -16,6 +18,54 @@ const workflowButtons = computed<{ value: KomorebiWorkflow; label: string }[]>((
 	{ value: 'remux', label: tr.value.workflows.remux },
 	{ value: 'ncm', label: tr.value.workflows.ncm },
 ]);
+const workflowLabel = (workflow: KomorebiWorkflow) => workflowButtons.value.find((item) => item.value === workflow)?.label || workflow;
+const selectedTasks = computed(() => [...appStore.selectedTask].map((id) => appStore.currentServer?.data.tasks[id]).filter(Boolean));
+const selectedInputPaths = computed(() => selectedTasks.value.flatMap((task) => {
+	if (task.kind === 'ncm') {
+		return task.ncm?.inputs || [];
+	}
+	return (task.after?.input?.files || [])
+		.map((file) => file.filePath)
+		.filter((filePath) => filePath && !filePath.startsWith('['));
+}));
+
+const getWorkflowBlockedReason = (workflow: KomorebiWorkflow) => {
+	if (!selectedTasks.value.length) {
+		return '';
+	}
+	const hasNcmTask = selectedTasks.value.some((task) => task.kind === 'ncm');
+	const hasFfmpegTask = selectedTasks.value.some((task) => task.kind !== 'ncm');
+	if (workflow === 'ncm' && hasFfmpegTask) {
+		return tr.value.workflowGuard.ffmpegOnly;
+	}
+	if (workflow !== 'ncm' && hasNcmTask) {
+		return tr.value.workflowGuard.ncmOnly;
+	}
+	const firstIncompatiblePath = selectedInputPaths.value.find((filePath) => !isKomorebiDroppablePath(workflow, filePath));
+	if (!firstIncompatiblePath) {
+		return '';
+	}
+	const kind = getKomorebiInputKind(firstIncompatiblePath);
+	if (kind === 'audio' && workflow === 'video-compress') {
+		return tr.value.workflowGuard.audioCannotVideo;
+	}
+	if (kind === 'ncm') {
+		return tr.value.workflowGuard.ncmCannotFfmpeg;
+	}
+	return tr.value.workflowGuard.unsupportedExtension(getFileExtension(firstIncompatiblePath));
+};
+
+const handleWorkflowClick = (workflow: KomorebiWorkflow) => {
+	if (workflow === appStore.komorebi.workflow) {
+		return;
+	}
+	const reason = getWorkflowBlockedReason(workflow);
+	if (reason) {
+		Popup({ message: tr.value.workflowGuard.blocked(workflowLabel(workflow), reason), level: 2 });
+		return;
+	}
+	appStore.komorebi.workflow = workflow;
+};
 </script>
 
 <template>
@@ -26,7 +76,7 @@ const workflowButtons = computed<{ value: KomorebiWorkflow; label: string }[]>((
 					v-for="item in workflowButtons"
 					:key="item.value"
 					:class="{ active: appStore.komorebi.workflow === item.value }"
-					@click="appStore.komorebi.workflow = item.value"
+					@click="handleWorkflowClick(item.value)"
 				>{{ item.label }}</button>
 			</div>
 		</div>

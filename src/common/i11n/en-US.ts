@@ -105,6 +105,9 @@ const lang: I11n = {
 			multiInputMode: 'Multi-input task mode',
 			fastStart: 'Start after drop',
 			status: (enabled) => `Status: ${enabled ? 'enabled' : 'off'}`,
+			autoSwitched: (workflow) => `Switched to "${workflow}" for the dropped file(s).`,
+			noSupportedInputs: 'No media file supported by Komorebi was found. Check the file format or path.',
+			noCommonWorkflow: 'The dropped files require different processing modes. Drop video, audio, and NCM files separately.',
 		},
 		komorebi: {
 			workflows: {
@@ -112,6 +115,14 @@ const lang: I11n = {
 				audioConvert: 'Audio conversion',
 				remux: 'Remux',
 				ncm: 'NCM conversion',
+			},
+			workflowGuard: {
+				blocked: (workflow, reason) => `Cannot switch to "${workflow}": ${reason}`,
+				ncmOnly: 'The selected task is an NCM task. Use NCM conversion for it.',
+				ffmpegOnly: 'The selected task is a normal media task and cannot use NCM conversion.',
+				audioCannotVideo: 'Audio files do not contain a video stream, so video compression is not available. Use audio conversion or remux instead.',
+				ncmCannotFfmpeg: 'NCM encrypted music must be decrypted with NCM conversion before using normal FFmpeg modes.',
+				unsupportedExtension: (extension) => `The file extension ${extension || 'unknown'} is not suitable for this mode.`,
 			},
 			hints: {
 				noInput: 'Choose or drop files, and Komorebi will detect available formats automatically.',
